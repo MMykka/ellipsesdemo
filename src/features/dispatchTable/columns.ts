@@ -1,0 +1,17 @@
+export const DISPATCH_TABLE_COLUMNS = [
+  { key: 'drag', label: '' },
+  { key: 'seq', label: '#' },
+  { key: 'name', label: 'Name' },
+  { key: 'kind', label: 'Stop' },
+  { key: 'spaceType', label: 'Space Type' },
+  { key: 'targetTime', label: 'Target Time' },
+  { key: 'eta', label: 'ETA' },
+  { key: 'status', label: 'Status' },
+  { key: 'travel', label: 'Travel' },
+  { key: 'arriveDist', label: 'Arrive Dist' },
+  { key: 'loadUnload', label: 'Load/Unload' },
+  { key: 'fundingSource', label: 'Funding Source' },
+  { key: 'phone', label: 'Phone' },
+  { key: 'address', label: 'Address' },
+  { key: 'actions', label: '' },
+] as const
