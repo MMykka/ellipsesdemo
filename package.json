@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "geocode:build": "node scripts/geocode/build-index.mjs",
-    "geocode:serve": "node scripts/geocode/server.mjs"
+    "geocode:serve": "node scripts/geocode/server.mjs",
+    "setup": "powershell -ExecutionPolicy Bypass -File scripts/setup.ps1"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

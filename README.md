@@ -17,6 +17,20 @@ This covers the originally planned build. Natural follow-ups if this keeps getti
 
 ## Running it
 
+**First time on a new machine (Windows):**
+
+```bash
+npm run setup
+```
+
+This is a one-shot script (`scripts/setup.ps1`) that installs the native build toolchain
+better-sqlite3 needs (MSVC + Windows SDK), runs `npm install`, creates `.env`, and downloads/builds
+the offline geocoding index and map tiles (see `docs/OFFLINE_SETUP.md` for what each piece does and
+how to target a region other than California). It's safe to re-run if it fails partway through —
+every step is skipped if its output already exists.
+
+**Every time after that:**
+
 ```bash
 npm install
 npm run dev
@@ -24,7 +38,7 @@ npm run dev
 
 Then open the printed local URL (typically http://localhost:5173) and go to the **Trips** tab to import an Excel file.
 
-For address geocoding to work, also run the local geocode server in a second terminal (see `docs/OFFLINE_SETUP.md` for one-time setup):
+For address geocoding to work, also run the local geocode server in a second terminal:
 
 ```bash
 npm run geocode:serve
