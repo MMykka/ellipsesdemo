@@ -1,12 +1,10 @@
 import { searchAddressCached } from '../../services/geocodeCache'
-import { searchAddressViaCensus } from '../../services/censusGeocodeClient'
 import type { AddressSlot } from '../../store/tripsStore'
 import type { Trip } from '../../types/trip'
 
 export interface GeocodeAllResult {
   resolved: number
   bestGuess: number
-  viaCensus: number
   failed: number
 }
 
@@ -17,24 +15,17 @@ interface GeocodeAllActions {
 
 /**
  * Best-effort bulk geocode: for every pickup/dropoff address still 'pending', applies the
- * top-ranked candidate. The underlying search (see scripts/geocode/normalize.mjs) requires house
- * number/zip to match exactly and only ranks street/city words, so the top result is normally a
- * strong match even when more than one candidate comes back — auto-applying it (rather than
- * always stopping for a manual pick) is what makes bulk import practical on a large regional
- * index. AddressGeocodeControl still shows a "not right?" affordance on every resolved address so
- * a bad auto-pick is one click to fix.
- *
- * Addresses the local index has zero candidates for get one automatic follow-up: the free US
- * Census Bureau Geocoder (see censusGeocodeClient.ts), which covers a real, common gap in
- * OpenStreetMap's community-tagged address points via TIGER/Line address-range interpolation.
- * That request sends only the bare address text, same as local search — never a member's name,
- * phone, or any other trip detail. Only what's left after both attempts needs a manual pick.
+ * top-ranked candidate from the free US Census Bureau Geocoder (see geocodeClient.ts). Only the
+ * bare address text is ever sent — never a member's name, phone, or any other trip detail.
+ * Auto-applying the top result (rather than always stopping for a manual pick) is what makes bulk
+ * import practical; AddressGeocodeControl still shows a "not right?" affordance on every resolved
+ * address so a bad auto-pick is one click to fix.
  */
 export async function geocodeAllPending(
   trips: Trip[],
   actions: GeocodeAllActions,
 ): Promise<GeocodeAllResult> {
-  const result: GeocodeAllResult = { resolved: 0, bestGuess: 0, viaCensus: 0, failed: 0 }
+  const result: GeocodeAllResult = { resolved: 0, bestGuess: 0, failed: 0 }
 
   const slots: { tripId: string; slot: AddressSlot; raw: string }[] = []
   for (const trip of trips) {
@@ -53,13 +44,6 @@ export async function geocodeAllPending(
         actions.setAddressGeo(tripId, slot, candidates[0].label, candidates[0].geo)
         if (candidates.length === 1) result.resolved += 1
         else result.bestGuess += 1
-        return
-      }
-
-      const censusMatches = await searchAddressViaCensus(raw)
-      if (censusMatches.length > 0) {
-        actions.setAddressGeo(tripId, slot, censusMatches[0].label, censusMatches[0].geo)
-        result.viaCensus += 1
         return
       }
 

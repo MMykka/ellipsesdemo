@@ -1,122 +1,58 @@
 # Offline Data Setup
 
-This app needs no internet access at runtime, but the map tiles and geocoding both depend on
-regional data you download/build **once**, locally. This doc covers geocoding (Phase 2) and map
-tiles (Phase 3).
+This app needs no local data build for geocoding, but the map tiles depend on regional data you
+download **once**, locally. This doc covers geocoding (Phase 2) and map tiles (Phase 3).
 
-None of this data is committed to the repo (see `.gitignore` — `offline-data/`, `*.osm.pbf`,
-`*.pmtiles`) — it's large, and regenerable from the steps below.
+Map tile data isn't committed to the repo (see `.gitignore` — `offline-data/`, `*.pmtiles`) — it's
+large, and regenerable from the steps below.
 
 ## Part 1: Geocoding
 
 ### Why this approach
 
-We looked at Photon (komoot's offline geocoder) first, but its only pre-built search index is
-**planet-scale** (60-100+ GB, 64GB RAM recommended) — there's no clean pre-built country or state
-extract. Building one ourselves would mean standing up a full Nominatim/PostgreSQL import
-pipeline, which is a lot of infrastructure for a tool that only needs to geocode a modest number
-of Southern-California addresses a day.
+Address geocoding is **online-only**, via the free US Census Bureau Geocoder
+(`geocoding.geo.census.gov`) — genuinely free, with no API key, no account, and no billing
+(unlike Google's Geocoding API, which needs a billing-enabled Cloud project even though usage
+would likely stay within its free credit). It interpolates from TIGER/Line address *ranges* along
+street segments, so it covers real houses well beyond what a point-by-point community-tagged
+dataset like OpenStreetMap would.
 
-Instead, we extract address points directly from the **same regional OpenStreetMap extract**
-used for map tiles below, load them into a local SQLite database with full-text search, and serve
-that from a small local Node script — no JVM, no Elasticsearch, no Docker.
+An earlier version of this project built a fully offline address index from a regional
+OpenStreetMap extract, loaded into a local SQLite database (`better-sqlite3`). That required a
+native compiler toolchain (MSVC + Windows SDK) to install the dependency, which was a recurring
+source of setup failures across machines — different Visual Studio versions, node-gyp detection
+bugs, partial installs. Moving geocoding fully online removes that dependency entirely: there is
+no native addon anywhere in this project anymore, so `npm install` never needs to compile
+anything.
 
-### 1. Get a regional OSM extract
+**Privacy scope**: every geocoding request sends **only the bare address text** being searched —
+never a member's name, phone, insurance, or any other trip/driver detail. This is the one place
+the app talks to the internet at runtime; nothing else does.
 
-Download an extract for your operating region from [Geofabrik](https://download.geofabrik.de/)
-(this project's examples use Southern California trips, so California is a reasonable starting
-region — add more states later by repeating this process against their extracts):
+### Run the geocode proxy
 
-```
-https://download.geofabrik.de/north-america/us/california-latest.osm.pbf
-```
-
-Save it somewhere outside the repo, e.g. `offline-data/raw/california-latest.osm.pbf`.
-
-### 2. Extract address features with pbf2json
-
-We looked at `osmium-tool` first, but it's not an npm package and has no official Windows binary
-(only conda-forge, or building from source). [`pbf2json`](https://github.com/pelias/pbf2json) (from
-the Pelias geocoder project) does the same job — filter an OSM extract down to just address-tagged
-features — and ships prebuilt binaries for Windows/Mac/Linux **via npm**, with no separate install
-step. It also already resolves way (building) geometries to a center point for you, so there's no
-separate "export to GeoJSON" pass needed.
-
-It's already a devDependency of this project. Run it against your extract:
-
-```
-npx pbf2json -tags="addr:housenumber" offline-data/raw/california-latest.osm.pbf > offline-data/raw/california-addresses.jsonl
-```
-
-This can take several minutes for a state-sized extract. The output is newline-delimited JSON (one
-OSM element per line), which is a different shape than GeoJSON — see the next step.
-
-### 3. Build the local search index
-
-`geocode:build` reads pbf2json's newline-delimited JSON (or GeoJSON, one feature per line or a
-single FeatureCollection — all three shapes are handled):
-
-```
-npm run geocode:build -- offline-data/raw/california-addresses.jsonl offline-data/geocode-index.sqlite
-```
-
-This keeps only records with a house number + street, and writes `offline-data/geocode-index.sqlite`
-(an `addresses` table plus an FTS5 full-text index for fuzzy/prefix matching).
-
-### 4. Run the geocode server
+The browser can't call `geocoding.geo.census.gov` directly — that API doesn't send CORS headers —
+so a tiny local Node script (`scripts/geocode/server.mjs`) proxies the request. It needs no local
+data and no build step:
 
 ```
 npm run geocode:serve
 ```
 
 Serves `GET /search?q=<address>&limit=5` on `http://localhost:5175` by default (configurable via
-the `GEOCODE_PORT` / `GEOCODE_DB_PATH` env vars). Leave this running alongside `npm run dev` —
-the app's `.env` already points `VITE_GEOCODE_URL` at `http://localhost:5175`.
+the `GEOCODE_PORT` env var). Leave this running alongside `npm run dev` — the app's `.env` already
+points `VITE_GEOCODE_URL` at `http://localhost:5175`.
 
 ### Using it in the app
 
 - **Automatic on import**: importing an Excel file geocodes every pickup/dropoff address right
-  away — no button click needed. The house number + zip must match exactly (see
-  `scripts/geocode/normalize.mjs`), so the top-ranked result is normally reliable even when more
-  than one candidate comes back; that top match is applied directly.
+  away — no button click needed. The top-ranked result is applied directly; if more than one
+  candidate comes back, the top guess is still auto-applied (flagged as a "best guess" so it's
+  easy to double check), which is what makes bulk import practical.
 - **Fixing a bad match**: every geocoded address has a small "Not right? Fix match" link to
   re-open the search and pick a different candidate, edit the search text and retry, or drop a pin
   yourself on an embedded map.
-- **When nothing matches locally**: OpenStreetMap's address coverage is real but uneven — some
-  streets have every house number individually tagged, others don't. When the local index has zero
-  candidates, the panel offers a **free US Census Bureau lookup** (see below) as a second attempt
-  before falling back to a manual map pin.
 - **Routing page**: adding a driver geocodes their garage address through the exact same flow.
-
-### Free online fallback: US Census Bureau Geocoder
-
-For an address the local OSM-based index doesn't have, the "Search the free US Census address
-database (online)" button queries `geocoding.geo.census.gov` — the US Census Bureau's public
-Geocoder. It's genuinely free with **no API key, no account, no billing** (unlike Google's
-Geocoding API, which needs a billing-enabled Cloud project even though usage would likely stay
-within its free credit). It interpolates from TIGER/Line address *ranges* along street segments,
-so it often finds houses OpenStreetMap's point-by-point community tagging never got to.
-
-This is the one deliberate exception to "fully offline" — clicking it sends a live request to a US
-government server. It sends **only the bare address text**, the same scope as every local search;
-never a member's name, phone, insurance, or any other trip detail. It's never called
-automatically, only when you explicitly click it for an address that failed locally.
-
-Technical note: the browser can't call that API directly (it doesn't send CORS headers), so the
-request is proxied through `scripts/geocode/server.mjs`'s `/census-search` endpoint — the same
-local server you're already running for offline search, not a new process.
-
-### Expanding geocoding coverage later
-
-`geocode:build` rebuilds its output file from scratch each run (it does not append), so to cover
-more than one state, run `pbf2json` against each extract separately and concatenate the outputs
-before building the index:
-
-```
-npx pbf2json -tags="addr:housenumber" offline-data/raw/nevada-latest.osm.pbf > offline-data/raw/nevada-addresses.jsonl
-cat offline-data/raw/california-addresses.jsonl offline-data/raw/nevada-addresses.jsonl > offline-data/raw/combined-addresses.jsonl
-npm run geocode:build -- offline-data/raw/combined-addresses.jsonl offline-data/geocode-index.sqlite
-```
 
 ## Part 2: Map tiles
 

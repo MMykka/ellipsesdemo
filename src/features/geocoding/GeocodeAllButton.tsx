@@ -41,7 +41,6 @@ export function GeocodeAllButton() {
         <span className="text-xs text-gray-500">
           {lastResult.resolved} resolved
           {lastResult.bestGuess > 0 ? `, ${lastResult.bestGuess} best guess (check these)` : ''}
-          {lastResult.viaCensus > 0 ? `, ${lastResult.viaCensus} via free Census lookup` : ''}
           {lastResult.failed > 0 ? `, ${lastResult.failed} still no match — fix on the card` : ''}
         </span>
       )}

@@ -3,11 +3,6 @@ import type { GeoPoint } from '../types/trip'
 export interface GeocodeCandidate {
   label: string
   geo: GeoPoint
-  housenumber?: string
-  street?: string
-  city?: string
-  state?: string
-  postcode?: string
 }
 
 const BASE_URL = import.meta.env.VITE_GEOCODE_URL ?? 'http://localhost:5175'
@@ -16,17 +11,15 @@ interface RawSearchResult {
   label: string
   lat: number
   lon: number
-  housenumber?: string
-  street?: string
-  city?: string
-  state?: string
-  postcode?: string
 }
 
 /**
- * Queries the local offline geocode server (scripts/geocode/server.mjs). Returns an empty array
- * on any failure (server not running, no matches) rather than throwing — callers treat "no
- * candidates" as a normal, expected outcome for addresses outside the indexed region.
+ * Queries the free US Census Bureau Geocoder (geocoding.geo.census.gov), routed through our own
+ * tiny local Node proxy (scripts/geocode/server.mjs) — that API doesn't send CORS headers, so the
+ * browser can't call it directly, but a Node process isn't subject to that browser-only
+ * restriction. Sends ONLY the bare address text being searched — never a member's name, phone,
+ * insurance, or any other trip detail. Returns an empty array on any failure (proxy not running,
+ * no matches) rather than throwing — callers treat "no candidates" as a normal outcome.
  */
 export async function searchAddress(query: string, limit = 5): Promise<GeocodeCandidate[]> {
   if (!query.trim()) return []
@@ -39,11 +32,6 @@ export async function searchAddress(query: string, limit = 5): Promise<GeocodeCa
     return data.results.map((r) => ({
       label: r.label,
       geo: { lat: r.lat, lng: r.lon },
-      housenumber: r.housenumber,
-      street: r.street,
-      city: r.city,
-      state: r.state,
-      postcode: r.postcode,
     }))
   } catch {
     return []

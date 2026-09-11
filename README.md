@@ -1,6 +1,6 @@
 # NEMT Dispatch Tool
 
-An internal, fully offline dispatch tool for planning non-emergency medical transport (NEMT) trips: import a daily Excel export into trip cards, then use a map + dispatch table to check whether a driver can feasibly take a trip and assign it.
+An internal dispatch tool for planning non-emergency medical transport (NEMT) trips: import a daily Excel export into trip cards, then use a map + dispatch table to check whether a driver can feasibly take a trip and assign it. Everything runs locally and offline except address geocoding, which sends only the bare address text to a free public geocoder — see Phase 2 below.
 
 No database — all imported trip data lives only in memory for the current session and is gone when the dev server stops or the page reloads. Re-import each day. (The driver roster and Excel column-mapping are the one exception: those persist in the browser's local storage as a convenience, since re-entering them every session would be pure friction.)
 
@@ -9,7 +9,7 @@ No database — all imported trip data lives only in memory for the current sess
 This is being built in phases. Currently implemented:
 
 - **Phase 1 — Excel import + trip cards.** Import an `.xlsx` file, map its columns (handles messy/duplicated headers and two-legs-per-row exports) to trip fields, and see the results as cards on the Trips page.
-- **Phase 2 — Offline geocoding.** A local address search index built from a regional OpenStreetMap extract (see `docs/OFFLINE_SETUP.md`), served by a tiny local Node script — no Docker, no JVM. Importing an Excel file automatically geocodes every address against it, no button click needed — the top-ranked match is applied directly (house number + zip are required to match exactly, so this is normally reliable), with a small "Not right? Fix match" link on every card to correct a bad pick. For an address OpenStreetMap genuinely doesn't have (a real, fairly common gap in crowdsourced map data — some residential house numbers just aren't individually tagged), there's a free, no-signup fallback to the US Census Bureau's Geocoder (only the bare address text is sent, never member/trip details), or you can edit the search text and retry, or drop a pin yourself on an embedded map.
+- **Phase 2 — Online geocoding.** Address lookups go through the free US Census Bureau Geocoder (`geocoding.geo.census.gov`), proxied through a tiny local Node script to work around that API's missing CORS headers — no API key, no account, no local data to build (see `docs/OFFLINE_SETUP.md`). This is the one deliberate exception to "fully offline": every request sends only the bare address text being searched, never a member's name, phone, or any other trip/driver detail. Importing an Excel file automatically geocodes every address, no button click needed — the top-ranked match is applied directly, with a small "Not right? Fix match" link on every card to correct a bad pick, edit the search text and retry, or drop a pin yourself on an embedded map.
 - **Phase 3 — Map + driver routes.** The Routing page renders an offline vector map (MapLibre + PMTiles — see `docs/OFFLINE_SETUP.md`) showing a selected driver's assigned stops as numbered pickup (green) / dropoff (red) pins plus a black "G" garage marker. Assign a trip to a driver from its card on the Trips page to see it appear here.
 - **Phase 4 — Dispatch table + feasibility.** Below the map, a table shows each assigned stop's estimated travel distance/time, ETA, and a Late/On Time/Early status against its target time — computed with a straight-line-distance estimate (see `docs/OFFLINE_SETUP.md` for why, no real road routing). Drag rows to reorder the route; times recompute automatically. Unassign a stop's trip directly from the table. Trip cards on the Trips page show the same Late/On Time/Early badges against actual recorded on-scene/finished times, via the same shared `classifyTiming` logic.
 
@@ -23,11 +23,14 @@ This covers the originally planned build. Natural follow-ups if this keeps getti
 npm run setup
 ```
 
-This is a one-shot script (`scripts/setup.ps1`) that installs the native build toolchain
-better-sqlite3 needs (MSVC + Windows SDK), runs `npm install`, creates `.env`, and downloads/builds
-the offline geocoding index and map tiles (see `docs/OFFLINE_SETUP.md` for what each piece does and
-how to target a region other than California). It's safe to re-run if it fails partway through —
-every step is skipped if its output already exists.
+This is a one-shot script (`scripts/setup.ps1`) that runs `npm install`, creates `.env`, and
+downloads/builds the offline map tiles (see `docs/OFFLINE_SETUP.md` for what each piece does and
+how to target a region other than California). There's no native compiler to install — geocoding
+is online-only (see Phase 2 above), so there's no native addon in this project at all. It's safe
+to re-run if it fails partway through — every step is skipped if its output already exists.
+
+Any platform (not just Windows) can equally just run `npm install` and `npm run dev` directly —
+`npm run setup` only adds the (optional) map-tiles download on top.
 
 **Every time after that:**
 

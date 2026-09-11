@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { searchAddressCached } from '../../services/geocodeCache'
 import type { GeocodeCandidate } from '../../services/geocodeClient'
-import { searchAddressViaCensus, type CensusGeocodeResult } from '../../services/censusGeocodeClient'
 import type { Address, GeoPoint } from '../../types/trip'
 import { ManualPinPicker } from './ManualPinPicker'
 
@@ -17,33 +16,22 @@ export function AddressGeocodeControl({ address, onResolve, onFailed }: AddressG
   const [candidates, setCandidates] = useState<GeocodeCandidate[] | null>(null)
   const [query, setQuery] = useState(address.raw)
   const [pinning, setPinning] = useState(false)
-  const [censusLoading, setCensusLoading] = useState(false)
-  const [censusResults, setCensusResults] = useState<CensusGeocodeResult[] | null>(null)
 
   if (!address.raw) return null
 
   async function runSearch(q: string) {
     setLoading(true)
     setCandidates(null)
-    setCensusResults(null)
     const results = await searchAddressCached(q)
     setCandidates(results)
     setLoading(false)
     if (results.length === 0) onFailed?.()
   }
 
-  async function runCensusSearch(q: string) {
-    setCensusLoading(true)
-    const results = await searchAddressViaCensus(q)
-    setCensusResults(results)
-    setCensusLoading(false)
-  }
-
   function handleOpen() {
     setQuery(address.raw)
     setOpen(true)
     setPinning(false)
-    setCensusResults(null)
     void runSearch(address.raw)
   }
 
@@ -51,7 +39,6 @@ export function AddressGeocodeControl({ address, onResolve, onFailed }: AddressG
     onResolve(label, geo)
     setOpen(false)
     setCandidates(null)
-    setCensusResults(null)
   }
 
   function handleManualPin(geo: GeoPoint) {
@@ -59,7 +46,6 @@ export function AddressGeocodeControl({ address, onResolve, onFailed }: AddressG
     setOpen(false)
     setPinning(false)
     setCandidates(null)
-    setCensusResults(null)
   }
 
   const resolved = address.geocodeStatus === 'resolved'
@@ -87,7 +73,7 @@ export function AddressGeocodeControl({ address, onResolve, onFailed }: AddressG
           {pinning ? (
             <>
               <ManualPinPicker
-                initialCenter={candidates?.[0]?.geo ?? censusResults?.[0]?.geo}
+                initialCenter={candidates?.[0]?.geo}
                 onConfirm={handleManualPin}
               />
               <button
@@ -128,9 +114,8 @@ export function AddressGeocodeControl({ address, onResolve, onFailed }: AddressG
               {loading && <p className="text-gray-500">Searching…</p>}
               {!loading && candidates && candidates.length === 0 && (
                 <p className="text-gray-500">
-                  No matches in the offline index. The exact address may not be mapped in
-                  OpenStreetMap — try dropping the house number or unit, search a cross street, or
-                  try the free government lookup below.
+                  No match found. Try dropping the unit/apartment number, search a cross street, or
+                  drop a pin yourself on the map below.
                 </p>
               )}
               {!loading && candidates && candidates.length > 0 && (
@@ -149,44 +134,11 @@ export function AddressGeocodeControl({ address, onResolve, onFailed }: AddressG
                 </ul>
               )}
 
-              {/* Always offered, not just when the local index comes up empty — the local match
-                  may be wrong (see "Not right? Fix match"), and this lets you check the Census
-                  database as an alternative any time, not only as a last resort. */}
-              {!loading && candidates && (
-                <div className="mt-1.5 border-t border-gray-200 pt-1.5">
-                  {censusResults === null && !censusLoading && (
-                    <button
-                      type="button"
-                      onClick={() => void runCensusSearch(query)}
-                      className="text-blue-700 underline hover:text-blue-900"
-                    >
-                      Search the free US Census address database (online)
-                    </button>
-                  )}
-                  {censusLoading && <p className="text-gray-500">Searching census.gov…</p>}
-                  {censusResults !== null && !censusLoading && censusResults.length === 0 && (
-                    <p className="text-gray-500">No match there either.</p>
-                  )}
-                  {censusResults !== null && censusResults.length > 0 && (
-                    <ul className="space-y-1">
-                      {censusResults.map((c, i) => (
-                        <li key={i}>
-                          <button
-                            type="button"
-                            onClick={() => handlePick(c.label, c.geo)}
-                            className="w-full rounded px-1.5 py-1 text-left text-gray-700 hover:bg-blue-100"
-                          >
-                            {c.label}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <p className="mt-1 text-[11px] text-gray-400">
-                    Sends only this address text to geocoding.geo.census.gov (a free US government
-                    service) — never the member name, phone, or any other trip detail.
-                  </p>
-                </div>
+              {!loading && (
+                <p className="mt-1.5 border-t border-gray-200 pt-1.5 text-[11px] text-gray-400">
+                  Searches send only this address text to geocoding.geo.census.gov (a free US
+                  government service) — never the member name, phone, or any other trip detail.
+                </p>
               )}
 
               {!loading && (

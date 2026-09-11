@@ -4,18 +4,19 @@
 # Usage:  powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 #
 # Covers:
-#   1. Native build toolchain (MSVC + Windows SDK) needed for better-sqlite3
-#   2. npm install
-#   3. .env
-#   4. Offline geocoding data (OpenStreetMap extract -> address index)
-#   5. Offline map tiles (PMTiles regional extract)
+#   1. npm install
+#   2. .env
+#   3. Offline map tiles (PMTiles regional extract)
 #
-# Region defaults to California (matches docs/OFFLINE_SETUP.md's example). Override
-# with -Region / -GeofabrikPath / -Bbox if you need a different state.
+# Address geocoding is online-only (see docs/OFFLINE_SETUP.md and scripts/geocode/server.mjs) and
+# needs no local build step - it needs no native compiler either, since there's no better-sqlite3
+# (or any other native addon) in this project anymore.
+#
+# Region defaults to California (matches docs/OFFLINE_SETUP.md's example). Override with -Region /
+# -Bbox if you need a different state.
 
 param(
     [string]$Region = "california",
-    [string]$GeofabrikPath = "north-america/us/california-latest.osm.pbf",
     [string]$Bbox = "-124.5,32.5,-114.0,42.1"
 )
 
@@ -28,119 +29,13 @@ function Ok($msg) { Write-Host "[OK] $msg" -ForegroundColor Green }
 function Skip($msg) { Write-Host "[SKIP] $msg (already present)" -ForegroundColor DarkGray }
 
 # ---------------------------------------------------------------------------
-Step "1. Native build toolchain (MSVC + Windows SDK)"
-
-$vswhere = "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
-
-# Version folder varies by release ("2022" for VS17, but newer releases use their
-# raw product major version e.g. "18") - don't hardcode it, discover it instead.
-$clFound = Get-ChildItem "C:\Program Files*\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe" -ErrorAction SilentlyContinue
-$sdkFound = Test-Path "C:\Program Files (x86)\Windows Kits\10\Include" -PathType Container
-
-if ($clFound -and $sdkFound -and (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\Include" -ErrorAction SilentlyContinue)) {
-    Skip "MSVC compiler + Windows SDK"
-} else {
-    # Only the small bootstrapper (vs_buildtools.exe) reliably supports --wait and
-    # actually blocks until the real (elevated) install finishes. The already-installed
-    # Installer's own CLI (vs_installer.exe / setup.exe modify|repair|uninstall --wait)
-    # silently rejects --wait as an unknown option and no-ops instead of erroring - do
-    # not use that path here, it was the cause of a stuck/incomplete SDK install that
-    # looked like success (exit 0) while never actually downloading anything.
-    Write-Host "Ensuring MSVC compiler + Windows 11 SDK are installed (downloading bootstrapper)..." -ForegroundColor Yellow
-    $bootstrapper = Join-Path $env:TEMP "vs_buildtools.exe"
-    curl.exe -L --ssl-no-revoke -o $bootstrapper https://aka.ms/vs/17/release/vs_buildtools.exe
-    if ($LASTEXITCODE -ne 0) { throw "Failed to download vs_buildtools.exe bootstrapper" }
-
-    $existingInstallPath = if (Test-Path $vswhere) { & $vswhere -all -property installationPath | Select-Object -First 1 } else { $null }
-
-    if ($existingInstallPath) {
-        # Existing (possibly partial) instance - add only what's missing to it.
-        # Discovered via vswhere rather than assumed, since the version folder
-        # (2022, 18, ...) varies by release.
-        $installArgs = @(
-            "modify", "--installPath", $existingInstallPath,
-            "--add", "Microsoft.VisualStudio.Workload.VCTools",
-            "--add", "Microsoft.VisualStudio.Component.Windows11SDK.26100",
-            "--quiet", "--wait", "--norestart"
-        )
-        & $bootstrapper @installArgs
-    } else {
-        # No instance at all - fresh install. Deliberately no -includeRecommended:
-        # that pulls in ASAN, CMake project templates, test tools, Vcpkg, etc. that
-        # better-sqlite3 (or any typical native addon) doesn't need.
-        $installArgs = @(
-            "--quiet", "--wait", "--norestart",
-            "--add", "Microsoft.VisualStudio.Workload.VCTools",
-            "--add", "Microsoft.VisualStudio.Component.Windows11SDK.26100"
-        )
-        & $bootstrapper @installArgs
-    }
-    Remove-Item $bootstrapper -ErrorAction SilentlyContinue
-
-    $clFound = Get-ChildItem "C:\Program Files*\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe" -ErrorAction SilentlyContinue
-    $sdkFound = Test-Path "C:\Program Files (x86)\Windows Kits\10\Include" -PathType Container
-    if (-not $clFound -or -not $sdkFound -or -not (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\Include" -ErrorAction SilentlyContinue)) {
-        Write-Host "MSVC/Windows SDK still not found after install attempt. Open 'Visual Studio Installer' manually and verify the 'Desktop development with C++' workload is checked." -ForegroundColor Red
-        exit 1
-    }
-    Ok "MSVC compiler + Windows SDK installed"
-}
-
-# node-gyp's own VS detector (separate from the check above, and not fixed by it)
-# only recognizes VS major versions up through 2022 (17) - on newer releases (e.g.
-# VS 2026 / version 18) it fails with "unknown version 'undefined'" even when the
-# compiler is genuinely present. GYP_MSVS_OVERRIDE_PATH does NOT fix this (confirmed
-# still fails the same way) - the actual fix landed in node-gyp 12.1.0, which added
-# real VS2026 detection. Install it globally and point npm at it for this build.
-#
-# Best-effort: under $ErrorActionPreference = "Stop", ANY stderr line from a native
-# command (e.g. a transient npm warning, or an ENOENT from a OneDrive-synced project
-# path) gets promoted to a terminating error and would abort the whole script. This
-# step is a nice-to-have, not core to setup, so failures here are only warned about
-# - they don't block npm install from being attempted.
-# https://github.com/nodejs/node-gyp/issues/3282
-$prevEap = $ErrorActionPreference
-$ErrorActionPreference = "Continue"
-try {
-    npm install -g node-gyp@latest *> $null
-    if ($LASTEXITCODE -eq 0) {
-        $globalNodeGypBin = Join-Path (npm root -g) "node-gyp\bin\node-gyp.js"
-        if (Test-Path $globalNodeGypBin) {
-            # Config key is "node_gyp" (underscore) - "node-gyp" (hyphen) is silently
-            # accepted by `npm config set` but has no effect, since it isn't a real
-            # recognized key. Confirmed the hard way: npm kept using its bundled
-            # node-gyp@11.5.0 even with that (wrong) key set.
-            # https://github.com/nodejs/node-gyp/blob/main/docs/Force-npm-to-use-global-node-gyp.md
-            npm config set node_gyp "$globalNodeGypBin" *> $null
-            Ok "node-gyp >=12.1.0 installed and configured for npm"
-        }
-    } else {
-        Write-Host "Could not install node-gyp globally (exit $LASTEXITCODE) - continuing. If npm install below fails with a VS-detection error, run 'npm install -g node-gyp' manually and retry." -ForegroundColor Yellow
-    }
-} catch {
-    Write-Host "node-gyp upgrade step failed ($($_.Exception.Message)) - continuing. If npm install below fails with a VS-detection error, run 'npm install -g node-gyp' manually and retry." -ForegroundColor Yellow
-}
-$ErrorActionPreference = $prevEap
-
-# ---------------------------------------------------------------------------
-Step "2. npm install"
+Step "1. npm install"
 npm install
 if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
 Ok "Dependencies installed"
 
-# Verify better-sqlite3 actually loads (catches a build that 'succeeded' but produced
-# a broken binding, the way ours silently did on the first VS install attempt).
-node -e "require('better-sqlite3')(':memory:').prepare('select 1').get()"
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "better-sqlite3 failed to load, rebuilding..." -ForegroundColor Yellow
-    npm rebuild better-sqlite3
-    node -e "require('better-sqlite3')(':memory:').prepare('select 1').get()"
-    if ($LASTEXITCODE -ne 0) { throw "better-sqlite3 still broken after rebuild" }
-}
-Ok "better-sqlite3 loads and runs"
-
 # ---------------------------------------------------------------------------
-Step "3. .env"
+Step "2. .env"
 if (Test-Path ".env") {
     Skip ".env"
 } else {
@@ -149,45 +44,7 @@ if (Test-Path ".env") {
 }
 
 # ---------------------------------------------------------------------------
-Step "4. Offline geocoding data"
-New-Item -ItemType Directory -Force -Path "offline-data/raw" | Out-Null
-
-$pbfPath = "offline-data/raw/$Region-latest.osm.pbf"
-$jsonlPath = "offline-data/raw/$Region-addresses.jsonl"
-$indexPath = "offline-data/geocode-index.sqlite"
-
-if (Test-Path $pbfPath) {
-    Skip "$pbfPath"
-} else {
-    Write-Host "Downloading $Region OSM extract from Geofabrik..." -ForegroundColor Yellow
-    curl.exe -L --ssl-no-revoke -o $pbfPath "https://download.geofabrik.de/$GeofabrikPath"
-    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $pbfPath) -or (Get-Item $pbfPath).Length -lt 1MB) {
-        Remove-Item $pbfPath -ErrorAction SilentlyContinue
-        throw "OSM extract download failed"
-    }
-    Ok "Downloaded $pbfPath"
-}
-
-if (Test-Path $jsonlPath) {
-    Skip "$jsonlPath"
-} else {
-    Write-Host "Extracting addresses with pbf2json (can take several minutes)..." -ForegroundColor Yellow
-    npx pbf2json -tags="addr:housenumber" $pbfPath | Out-File -Encoding utf8 $jsonlPath
-    if ($LASTEXITCODE -ne 0) { throw "pbf2json extraction failed" }
-    Ok "Extracted $jsonlPath"
-}
-
-if (Test-Path $indexPath) {
-    Skip "$indexPath"
-} else {
-    Write-Host "Building geocode search index..." -ForegroundColor Yellow
-    npm run geocode:build -- $jsonlPath $indexPath
-    if ($LASTEXITCODE -ne 0) { throw "geocode:build failed" }
-    Ok "Built $indexPath"
-}
-
-# ---------------------------------------------------------------------------
-Step "5. Offline map tiles (PMTiles)"
+Step "3. Offline map tiles (PMTiles)"
 
 $pmtilesFile = "public/tiles/region.pmtiles"
 if (Test-Path $pmtilesFile) {
