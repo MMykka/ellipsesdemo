@@ -1,4 +1,4 @@
-# One-shot setup for a fresh machine. Safe to re-run — every step is skipped if its
+# One-shot setup for a fresh machine. Safe to re-run - every step is skipped if its
 # output already exists, so re-running after a partial/failed run just resumes.
 #
 # Usage:  powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
@@ -33,7 +33,7 @@ Step "1. Native build toolchain (MSVC + Windows SDK)"
 $vswhere = "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
 
 # Version folder varies by release ("2022" for VS17, but newer releases use their
-# raw product major version e.g. "18") — don't hardcode it, discover it instead.
+# raw product major version e.g. "18") - don't hardcode it, discover it instead.
 $clFound = Get-ChildItem "C:\Program Files*\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe" -ErrorAction SilentlyContinue
 $sdkFound = Test-Path "C:\Program Files (x86)\Windows Kits\10\Include" -PathType Container
 
@@ -43,7 +43,7 @@ if ($clFound -and $sdkFound -and (Get-ChildItem "C:\Program Files (x86)\Windows 
     # Only the small bootstrapper (vs_buildtools.exe) reliably supports --wait and
     # actually blocks until the real (elevated) install finishes. The already-installed
     # Installer's own CLI (vs_installer.exe / setup.exe modify|repair|uninstall --wait)
-    # silently rejects --wait as an unknown option and no-ops instead of erroring — do
+    # silently rejects --wait as an unknown option and no-ops instead of erroring - do
     # not use that path here, it was the cause of a stuck/incomplete SDK install that
     # looked like success (exit 0) while never actually downloading anything.
     Write-Host "Ensuring MSVC compiler + Windows 11 SDK are installed (downloading bootstrapper)..." -ForegroundColor Yellow
@@ -54,20 +54,26 @@ if ($clFound -and $sdkFound -and (Get-ChildItem "C:\Program Files (x86)\Windows 
     $existingInstallPath = if (Test-Path $vswhere) { & $vswhere -all -property installationPath | Select-Object -First 1 } else { $null }
 
     if ($existingInstallPath) {
-        # Existing (possibly partial) instance — add only what's missing to it.
+        # Existing (possibly partial) instance - add only what's missing to it.
         # Discovered via vswhere rather than assumed, since the version folder
         # (2022, 18, ...) varies by release.
-        & $bootstrapper modify --installPath $existingInstallPath `
-            --add Microsoft.VisualStudio.Workload.VCTools `
-            --add Microsoft.VisualStudio.Component.Windows11SDK.26100 `
-            --quiet --wait --norestart
+        $installArgs = @(
+            "modify", "--installPath", $existingInstallPath,
+            "--add", "Microsoft.VisualStudio.Workload.VCTools",
+            "--add", "Microsoft.VisualStudio.Component.Windows11SDK.26100",
+            "--quiet", "--wait", "--norestart"
+        )
+        & $bootstrapper @installArgs
     } else {
-        # No instance at all — fresh install. Deliberately no -includeRecommended:
+        # No instance at all - fresh install. Deliberately no -includeRecommended:
         # that pulls in ASAN, CMake project templates, test tools, Vcpkg, etc. that
         # better-sqlite3 (or any typical native addon) doesn't need.
-        & $bootstrapper --quiet --wait --norestart `
-            --add Microsoft.VisualStudio.Workload.VCTools `
-            --add Microsoft.VisualStudio.Component.Windows11SDK.26100
+        $installArgs = @(
+            "--quiet", "--wait", "--norestart",
+            "--add", "Microsoft.VisualStudio.Workload.VCTools",
+            "--add", "Microsoft.VisualStudio.Component.Windows11SDK.26100"
+        )
+        & $bootstrapper @installArgs
     }
     Remove-Item $bootstrapper -ErrorAction SilentlyContinue
 
@@ -81,17 +87,17 @@ if ($clFound -and $sdkFound -and (Get-ChildItem "C:\Program Files (x86)\Windows 
 }
 
 # node-gyp's own VS detector (separate from the check above, and not fixed by it)
-# only recognizes VS major versions up through 2022 (17) — on newer releases (e.g.
+# only recognizes VS major versions up through 2022 (17) - on newer releases (e.g.
 # VS 2026 / version 18) it fails with "unknown version 'undefined'" even when the
 # compiler is genuinely present. GYP_MSVS_OVERRIDE_PATH does NOT fix this (confirmed
-# still fails the same way) — the actual fix landed in node-gyp 12.1.0, which added
+# still fails the same way) - the actual fix landed in node-gyp 12.1.0, which added
 # real VS2026 detection. Install it globally and point npm at it for this build.
 #
 # Best-effort: under $ErrorActionPreference = "Stop", ANY stderr line from a native
 # command (e.g. a transient npm warning, or an ENOENT from a OneDrive-synced project
 # path) gets promoted to a terminating error and would abort the whole script. This
 # step is a nice-to-have, not core to setup, so failures here are only warned about
-# — they don't block npm install from being attempted.
+# - they don't block npm install from being attempted.
 # https://github.com/nodejs/node-gyp/issues/3282
 $prevEap = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
@@ -104,10 +110,10 @@ try {
             Ok "node-gyp >=12.1.0 installed and configured for npm"
         }
     } else {
-        Write-Host "Could not install node-gyp globally (exit $LASTEXITCODE) — continuing. If npm install below fails with a VS-detection error, run 'npm install -g node-gyp' manually and retry." -ForegroundColor Yellow
+        Write-Host "Could not install node-gyp globally (exit $LASTEXITCODE) - continuing. If npm install below fails with a VS-detection error, run 'npm install -g node-gyp' manually and retry." -ForegroundColor Yellow
     }
 } catch {
-    Write-Host "node-gyp upgrade step failed ($($_.Exception.Message)) — continuing. If npm install below fails with a VS-detection error, run 'npm install -g node-gyp' manually and retry." -ForegroundColor Yellow
+    Write-Host "node-gyp upgrade step failed ($($_.Exception.Message)) - continuing. If npm install below fails with a VS-detection error, run 'npm install -g node-gyp' manually and retry." -ForegroundColor Yellow
 }
 $ErrorActionPreference = $prevEap
 
