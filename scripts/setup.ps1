@@ -106,7 +106,12 @@ try {
     if ($LASTEXITCODE -eq 0) {
         $globalNodeGypBin = Join-Path (npm root -g) "node-gyp\bin\node-gyp.js"
         if (Test-Path $globalNodeGypBin) {
-            npm config set node-gyp "$globalNodeGypBin" *> $null
+            # Config key is "node_gyp" (underscore) - "node-gyp" (hyphen) is silently
+            # accepted by `npm config set` but has no effect, since it isn't a real
+            # recognized key. Confirmed the hard way: npm kept using its bundled
+            # node-gyp@11.5.0 even with that (wrong) key set.
+            # https://github.com/nodejs/node-gyp/blob/main/docs/Force-npm-to-use-global-node-gyp.md
+            npm config set node_gyp "$globalNodeGypBin" *> $null
             Ok "node-gyp >=12.1.0 installed and configured for npm"
         }
     } else {
