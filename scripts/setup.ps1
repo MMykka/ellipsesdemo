@@ -86,17 +86,30 @@ if ($clFound -and $sdkFound -and (Get-ChildItem "C:\Program Files (x86)\Windows 
 # compiler is genuinely present. GYP_MSVS_OVERRIDE_PATH does NOT fix this (confirmed
 # still fails the same way) — the actual fix landed in node-gyp 12.1.0, which added
 # real VS2026 detection. Install it globally and point npm at it for this build.
+#
+# Best-effort: under $ErrorActionPreference = "Stop", ANY stderr line from a native
+# command (e.g. a transient npm warning, or an ENOENT from a OneDrive-synced project
+# path) gets promoted to a terminating error and would abort the whole script. This
+# step is a nice-to-have, not core to setup, so failures here are only warned about
+# — they don't block npm install from being attempted.
 # https://github.com/nodejs/node-gyp/issues/3282
-$installedNodeGyp = (npm ls -g node-gyp --depth=0 --json 2>$null | ConvertFrom-Json).dependencies.'node-gyp'.version
-if (-not $installedNodeGyp -or [version]$installedNodeGyp -lt [version]"12.1.0") {
-    Write-Host "Installing node-gyp >=12.1.0 globally (older bundled node-gyp can't detect VS2026)..." -ForegroundColor Yellow
-    npm install -g node-gyp@latest
-    if ($LASTEXITCODE -ne 0) { throw "Failed to install node-gyp globally" }
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    npm install -g node-gyp@latest *> $null
+    if ($LASTEXITCODE -eq 0) {
+        $globalNodeGypBin = Join-Path (npm root -g) "node-gyp\bin\node-gyp.js"
+        if (Test-Path $globalNodeGypBin) {
+            npm config set node-gyp "$globalNodeGypBin" *> $null
+            Ok "node-gyp >=12.1.0 installed and configured for npm"
+        }
+    } else {
+        Write-Host "Could not install node-gyp globally (exit $LASTEXITCODE) — continuing. If npm install below fails with a VS-detection error, run 'npm install -g node-gyp' manually and retry." -ForegroundColor Yellow
+    }
+} catch {
+    Write-Host "node-gyp upgrade step failed ($($_.Exception.Message)) — continuing. If npm install below fails with a VS-detection error, run 'npm install -g node-gyp' manually and retry." -ForegroundColor Yellow
 }
-$globalNodeGypBin = Join-Path (npm root -g) "node-gyp\bin\node-gyp.js"
-if (Test-Path $globalNodeGypBin) {
-    npm config set node-gyp "$globalNodeGypBin"
-}
+$ErrorActionPreference = $prevEap
 
 # ---------------------------------------------------------------------------
 Step "2. npm install"
