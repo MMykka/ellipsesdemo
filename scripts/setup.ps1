@@ -80,6 +80,16 @@ if ($clFound -and $sdkFound -and (Get-ChildItem "C:\Program Files (x86)\Windows 
     Ok "MSVC compiler + Windows SDK installed"
 }
 
+# node-gyp's own VS detector (separate from the check above, and not fixed by it)
+# only recognizes VS major versions up through 2022 (17) — it fails to find newer
+# releases (e.g. VS 2026 / version 18) even when the compiler is genuinely present.
+# GYP_MSVS_OVERRIDE_PATH makes it skip that detection and trust this path directly.
+# https://github.com/nodejs/node-gyp/issues/3282
+$vsPath = if (Test-Path $vswhere) { & $vswhere -all -property installationPath | Select-Object -First 1 } else { $null }
+if ($vsPath) {
+    $env:GYP_MSVS_OVERRIDE_PATH = $vsPath
+}
+
 # ---------------------------------------------------------------------------
 Step "2. npm install"
 npm install
