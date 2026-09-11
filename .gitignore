@@ -28,5 +28,8 @@ offline-data/
 *.pmtiles
 *.osm.pbf
 
+# pmtiles CLI, downloaded locally by scripts/setup.ps1 — not committed
+/tools/
+
 .env
 .env.local
