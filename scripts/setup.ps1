@@ -31,9 +31,10 @@ function Skip($msg) { Write-Host "[SKIP] $msg (already present)" -ForegroundColo
 Step "1. Native build toolchain (MSVC + Windows SDK)"
 
 $vswhere = "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
-$vsInstallPath = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools"
 
-$clFound = Get-ChildItem "C:\Program Files*\Microsoft Visual Studio\2022\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe" -ErrorAction SilentlyContinue
+# Version folder varies by release ("2022" for VS17, but newer releases use their
+# raw product major version e.g. "18") — don't hardcode it, discover it instead.
+$clFound = Get-ChildItem "C:\Program Files*\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe" -ErrorAction SilentlyContinue
 $sdkFound = Test-Path "C:\Program Files (x86)\Windows Kits\10\Include" -PathType Container
 
 if ($clFound -and $sdkFound -and (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\Include" -ErrorAction SilentlyContinue)) {
@@ -50,9 +51,13 @@ if ($clFound -and $sdkFound -and (Get-ChildItem "C:\Program Files (x86)\Windows 
     curl.exe -L --ssl-no-revoke -o $bootstrapper https://aka.ms/vs/17/release/vs_buildtools.exe
     if ($LASTEXITCODE -ne 0) { throw "Failed to download vs_buildtools.exe bootstrapper" }
 
-    if (Test-Path $vswhere) {
+    $existingInstallPath = if (Test-Path $vswhere) { & $vswhere -all -property installationPath | Select-Object -First 1 } else { $null }
+
+    if ($existingInstallPath) {
         # Existing (possibly partial) instance — add only what's missing to it.
-        & $bootstrapper modify --installPath $vsInstallPath `
+        # Discovered via vswhere rather than assumed, since the version folder
+        # (2022, 18, ...) varies by release.
+        & $bootstrapper modify --installPath $existingInstallPath `
             --add Microsoft.VisualStudio.Workload.VCTools `
             --add Microsoft.VisualStudio.Component.Windows11SDK.26100 `
             --quiet --wait --norestart
@@ -66,7 +71,7 @@ if ($clFound -and $sdkFound -and (Get-ChildItem "C:\Program Files (x86)\Windows 
     }
     Remove-Item $bootstrapper -ErrorAction SilentlyContinue
 
-    $clFound = Get-ChildItem "C:\Program Files*\Microsoft Visual Studio\2022\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe" -ErrorAction SilentlyContinue
+    $clFound = Get-ChildItem "C:\Program Files*\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe" -ErrorAction SilentlyContinue
     $sdkFound = Test-Path "C:\Program Files (x86)\Windows Kits\10\Include" -PathType Container
     if (-not $clFound -or -not $sdkFound -or -not (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\Include" -ErrorAction SilentlyContinue)) {
         Write-Host "MSVC/Windows SDK still not found after install attempt. Open 'Visual Studio Installer' manually and verify the 'Desktop development with C++' workload is checked." -ForegroundColor Red
