@@ -39,26 +39,37 @@ $sdkFound = Test-Path "C:\Program Files (x86)\Windows Kits\10\Include" -PathType
 if ($clFound -and $sdkFound -and (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\Include" -ErrorAction SilentlyContinue)) {
     Skip "MSVC compiler + Windows SDK"
 } else {
-    if (-not (Test-Path $vswhere)) {
-        Write-Host "Installing Visual Studio Build Tools (C++ workload)... this is a multi-GB download." -ForegroundColor Yellow
-        winget install --id Microsoft.VisualStudio.2022.BuildTools -e --accept-package-agreements --accept-source-agreements `
-            --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
-    }
+    # Only the small bootstrapper (vs_buildtools.exe) reliably supports --wait and
+    # actually blocks until the real (elevated) install finishes. The already-installed
+    # Installer's own CLI (vs_installer.exe / setup.exe modify|repair|uninstall --wait)
+    # silently rejects --wait as an unknown option and no-ops instead of erroring — do
+    # not use that path here, it was the cause of a stuck/incomplete SDK install that
+    # looked like success (exit 0) while never actually downloading anything.
+    Write-Host "Ensuring MSVC compiler + Windows 11 SDK are installed (downloading bootstrapper)..." -ForegroundColor Yellow
+    $bootstrapper = Join-Path $env:TEMP "vs_buildtools.exe"
+    curl.exe -L --ssl-no-revoke -o $bootstrapper https://aka.ms/vs/17/release/vs_buildtools.exe
+    if ($LASTEXITCODE -ne 0) { throw "Failed to download vs_buildtools.exe bootstrapper" }
 
-    # Whether this is a fresh install or a resumed/partial one, `modify` brings it
-    # up to the requested component set and is safe to run even if already complete.
     if (Test-Path $vswhere) {
-        Write-Host "Ensuring C++ workload + Windows 11 SDK are installed..." -ForegroundColor Yellow
-        & "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe" modify `
-            --installPath $vsInstallPath `
-            --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended `
+        # Existing (possibly partial) instance — add only what's missing to it.
+        & $bootstrapper modify --installPath $vsInstallPath `
+            --add Microsoft.VisualStudio.Workload.VCTools `
             --add Microsoft.VisualStudio.Component.Windows11SDK.26100 `
-            --passive --norestart --wait
+            --quiet --wait --norestart
+    } else {
+        # No instance at all — fresh install. Deliberately no -includeRecommended:
+        # that pulls in ASAN, CMake project templates, test tools, Vcpkg, etc. that
+        # better-sqlite3 (or any typical native addon) doesn't need.
+        & $bootstrapper --quiet --wait --norestart `
+            --add Microsoft.VisualStudio.Workload.VCTools `
+            --add Microsoft.VisualStudio.Component.Windows11SDK.26100
     }
+    Remove-Item $bootstrapper -ErrorAction SilentlyContinue
 
     $clFound = Get-ChildItem "C:\Program Files*\Microsoft Visual Studio\2022\*\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe" -ErrorAction SilentlyContinue
-    if (-not $clFound) {
-        Write-Host "cl.exe still not found after install attempt. Open 'Visual Studio Installer' manually and verify the 'Desktop development with C++' workload is checked." -ForegroundColor Red
+    $sdkFound = Test-Path "C:\Program Files (x86)\Windows Kits\10\Include" -PathType Container
+    if (-not $clFound -or -not $sdkFound -or -not (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\Include" -ErrorAction SilentlyContinue)) {
+        Write-Host "MSVC/Windows SDK still not found after install attempt. Open 'Visual Studio Installer' manually and verify the 'Desktop development with C++' workload is checked." -ForegroundColor Red
         exit 1
     }
     Ok "MSVC compiler + Windows SDK installed"
@@ -141,7 +152,7 @@ if (Test-Path $pmtilesFile) {
         $toolsDir = "tools"
         New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
         $release = Invoke-RestMethod -Uri "https://api.github.com/repos/protomaps/go-pmtiles/releases/latest" -Headers @{ "User-Agent" = "setup-script" }
-        $asset = $release.assets | Where-Object { $_.name -match "windows.*amd64.*\.zip$" } | Select-Object -First 1
+        $asset = $release.assets | Where-Object { $_.name -match "(?i)windows.*(amd64|x86_64).*\.zip$" } | Select-Object -First 1
         if (-not $asset) { throw "Could not find a Windows amd64 go-pmtiles release asset" }
         $zipPath = Join-Path $toolsDir "go-pmtiles.zip"
         Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zipPath
