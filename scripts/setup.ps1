@@ -81,13 +81,21 @@ if ($clFound -and $sdkFound -and (Get-ChildItem "C:\Program Files (x86)\Windows 
 }
 
 # node-gyp's own VS detector (separate from the check above, and not fixed by it)
-# only recognizes VS major versions up through 2022 (17) — it fails to find newer
-# releases (e.g. VS 2026 / version 18) even when the compiler is genuinely present.
-# GYP_MSVS_OVERRIDE_PATH makes it skip that detection and trust this path directly.
+# only recognizes VS major versions up through 2022 (17) — on newer releases (e.g.
+# VS 2026 / version 18) it fails with "unknown version 'undefined'" even when the
+# compiler is genuinely present. GYP_MSVS_OVERRIDE_PATH does NOT fix this (confirmed
+# still fails the same way) — the actual fix landed in node-gyp 12.1.0, which added
+# real VS2026 detection. Install it globally and point npm at it for this build.
 # https://github.com/nodejs/node-gyp/issues/3282
-$vsPath = if (Test-Path $vswhere) { & $vswhere -all -property installationPath | Select-Object -First 1 } else { $null }
-if ($vsPath) {
-    $env:GYP_MSVS_OVERRIDE_PATH = $vsPath
+$installedNodeGyp = (npm ls -g node-gyp --depth=0 --json 2>$null | ConvertFrom-Json).dependencies.'node-gyp'.version
+if (-not $installedNodeGyp -or [version]$installedNodeGyp -lt [version]"12.1.0") {
+    Write-Host "Installing node-gyp >=12.1.0 globally (older bundled node-gyp can't detect VS2026)..." -ForegroundColor Yellow
+    npm install -g node-gyp@latest
+    if ($LASTEXITCODE -ne 0) { throw "Failed to install node-gyp globally" }
+}
+$globalNodeGypBin = Join-Path (npm root -g) "node-gyp\bin\node-gyp.js"
+if (Test-Path $globalNodeGypBin) {
+    npm config set node-gyp "$globalNodeGypBin"
 }
 
 # ---------------------------------------------------------------------------
