@@ -33,7 +33,7 @@ export function ExcelImportButton() {
     try {
       const parsed = await parseWorkbook(file)
       if (parsed.rows.length === 0) {
-        setError('No data rows found in the first sheet of that file.')
+        setError('No data rows found in that file.')
         return
       }
 
@@ -44,7 +44,7 @@ export function ExcelImportButton() {
         setPending(parsed)
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to read that Excel file.')
+      setError(err instanceof Error ? err.message : 'Failed to read that file.')
     } finally {
       setIsParsing(false)
     }
@@ -89,7 +89,7 @@ export function ExcelImportButton() {
       <input
         ref={inputRef}
         type="file"
-        accept=".xlsx,.xlsm,.xls"
+        accept=".xlsx,.xlsm,.xls,.csv,.tsv,.txt"
         className="hidden"
         onChange={handleFileChange}
       />
@@ -99,7 +99,7 @@ export function ExcelImportButton() {
         disabled={busy}
         className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
       >
-        {isParsing ? 'Reading file…' : isGeocoding ? 'Locating addresses…' : 'Import Excel'}
+        {isParsing ? 'Reading file…' : isGeocoding ? 'Locating addresses…' : 'Import File'}
       </button>
 
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}

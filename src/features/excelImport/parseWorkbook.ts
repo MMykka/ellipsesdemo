@@ -1,9 +1,33 @@
 import ExcelJS from 'exceljs'
+import { parseDelimitedText } from './parseDelimitedText'
 
 export interface ParsedWorkbook {
   headerRow: string[]
   /** Each row is an array aligned to headerRow, raw cell values (string | number | Date | null). */
   rows: unknown[][]
+}
+
+/** Zip local-file-header signature ("PK\x03\x04") — .xlsx/.xlsm are zip archives. */
+function isZipFile(bytes: Uint8Array): boolean {
+  return bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04
+}
+
+/** OLE2 compound-file signature — the format legacy .xls (pre-2007 Excel) uses. Not supported. */
+function isLegacyOleFile(bytes: Uint8Array): boolean {
+  return (
+    bytes[0] === 0xd0 &&
+    bytes[1] === 0xcf &&
+    bytes[2] === 0x11 &&
+    bytes[3] === 0xe0 &&
+    bytes[4] === 0xa1 &&
+    bytes[5] === 0xb1 &&
+    bytes[6] === 0x1a &&
+    bytes[7] === 0xe1
+  )
+}
+
+function decodeText(bytes: Uint8Array): string {
+  return new TextDecoder('utf-8').decode(bytes)
 }
 
 /** Turns a header cell's value into a stable string label, filling blanks with "Column<n>". */
@@ -48,8 +72,7 @@ function cellValueToRaw(value: ExcelJS.CellValue): unknown {
   return value
 }
 
-export async function parseWorkbook(file: File): Promise<ParsedWorkbook> {
-  const buffer = await file.arrayBuffer()
+async function parseXlsx(buffer: ArrayBuffer): Promise<ParsedWorkbook> {
   const workbook = new ExcelJS.Workbook()
   await workbook.xlsx.load(buffer)
 
@@ -78,5 +101,34 @@ export async function parseWorkbook(file: File): Promise<ParsedWorkbook> {
     rows.push(values)
   })
 
+  return { headerRow, rows }
+}
+
+/**
+ * Reads an imported trip export. Format is detected from the file's actual bytes (not its
+ * extension/name) so a CSV that happens to be named ".xls", or vice versa, still works:
+ * - zip signature (PK..)        -> .xlsx/.xlsm, parsed via ExcelJS
+ * - OLE2 signature              -> legacy pre-2007 .xls — not supported, clear error instead of
+ *                                   ExcelJS's cryptic "is this a zip file?" message
+ * - anything else               -> treated as delimited text (CSV/TSV/semicolon-separated),
+ *                                   delimiter auto-detected from the header line
+ */
+export async function parseWorkbook(file: File): Promise<ParsedWorkbook> {
+  const buffer = await file.arrayBuffer()
+  const bytes = new Uint8Array(buffer)
+
+  if (isZipFile(bytes)) {
+    return parseXlsx(buffer)
+  }
+
+  if (isLegacyOleFile(bytes)) {
+    throw new Error(
+      'This looks like a legacy .xls file (pre-2007 Excel format), which isn\'t supported. ' +
+        'Re-save it as .xlsx or .csv and try again.',
+    )
+  }
+
+  const text = decodeText(bytes)
+  const { headerRow, rows } = parseDelimitedText(text)
   return { headerRow, rows }
 }
