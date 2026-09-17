@@ -67,16 +67,23 @@ export function RoutingPage() {
                 </div>
               )}
               <MapView route={route} />
-              <DispatchTable route={route} />
-              <p className="mt-2 text-xs text-gray-400">
-                Distance/time are estimates (straight-line distance, not real road routing — see
-                docs/OFFLINE_SETUP.md). Drag rows to reorder the route; times recompute
-                automatically.
-              </p>
             </>
           )}
         </div>
       </div>
+
+      {/* Full-width below the trip list/map row (rather than sharing that row's cramped right
+          column) so the table has room to show every column, the Unassign button included,
+          without needing a horizontal scroll. */}
+      {selectedDriverId && route && (
+        <>
+          <DispatchTable route={route} />
+          <p className="mt-2 text-xs text-gray-400">
+            Distance/time are estimates (straight-line distance, not real road routing — see
+            docs/OFFLINE_SETUP.md). Drag rows to reorder the route; times recompute automatically.
+          </p>
+        </>
+      )}
     </div>
   )
 }

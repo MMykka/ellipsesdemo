@@ -137,7 +137,8 @@ export function AddressGeocodeControl({ address, onResolve, onFailed }: AddressG
               {!loading && (
                 <p className="mt-1.5 border-t border-gray-200 pt-1.5 text-[11px] text-gray-400">
                   Searches send only this address text to geocoding.geo.census.gov (a free US
-                  government service) — never the member name, phone, or any other trip detail.
+                  government service), falling back to OpenStreetMap's Nominatim if that finds no
+                  match — never the member name, phone, or any other trip detail.
                 </p>
               )}
 

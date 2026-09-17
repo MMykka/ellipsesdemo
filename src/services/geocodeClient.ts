@@ -14,12 +14,14 @@ interface RawSearchResult {
 }
 
 /**
- * Queries the free US Census Bureau Geocoder (geocoding.geo.census.gov), routed through our own
- * tiny local Node proxy (scripts/geocode/server.mjs) — that API doesn't send CORS headers, so the
- * browser can't call it directly, but a Node process isn't subject to that browser-only
- * restriction. Sends ONLY the bare address text being searched — never a member's name, phone,
- * insurance, or any other trip detail. Returns an empty array on any failure (proxy not running,
- * no matches) rather than throwing — callers treat "no candidates" as a normal outcome.
+ * Queries the free US Census Bureau Geocoder (geocoding.geo.census.gov), falling back to
+ * OpenStreetMap Nominatim when Census finds no match (it lags on newer developments) — both
+ * routed through our own tiny local Node proxy (scripts/geocode/server.mjs) since neither API
+ * sends CORS headers, so the browser can't call them directly, but a Node process isn't subject to
+ * that browser-only restriction. Sends ONLY the bare address text being searched — never a
+ * member's name, phone, insurance, or any other trip detail. Returns an empty array on any failure
+ * (proxy not running, no matches from either service) rather than throwing — callers treat "no
+ * candidates" as a normal outcome.
  */
 export async function searchAddress(query: string, limit = 5): Promise<GeocodeCandidate[]> {
   if (!query.trim()) return []

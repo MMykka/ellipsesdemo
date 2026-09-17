@@ -6,7 +6,7 @@ export type AddressSlot = 'pickup' | 'dropoff'
 interface TripsState {
   trips: Trip[]
   lastImportedAt?: string
-  replaceAll: (trips: Trip[]) => void
+  addTrips: (trips: Trip[]) => void
   updateTrip: (id: string, patch: Partial<Trip>) => void
   assignDriver: (tripId: string, driverId: string | undefined) => void
   setAddressGeo: (tripId: string, slot: AddressSlot, label: string, geo: GeoPoint) => void
@@ -18,7 +18,15 @@ export const useTripsStore = create<TripsState>((set) => ({
   trips: [],
   lastImportedAt: undefined,
 
-  replaceAll: (trips) => set({ trips, lastImportedAt: new Date().toISOString() }),
+  // Upserts by id, so importing another file adds its trips alongside whatever was already
+  // imported, rather than wiping the board — re-importing a file whose trips share ids with what's
+  // already loaded refreshes just those trips in place.
+  addTrips: (trips) =>
+    set((state) => {
+      const byId = new Map(state.trips.map((t) => [t.id, t]))
+      for (const trip of trips) byId.set(trip.id, trip)
+      return { trips: [...byId.values()], lastImportedAt: new Date().toISOString() }
+    }),
 
   updateTrip: (id, patch) =>
     set((state) => ({

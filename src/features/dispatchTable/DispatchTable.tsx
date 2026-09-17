@@ -12,15 +12,17 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { useState } from 'react'
 import { tripDisplayDateTime } from '../../domain/time/tripSortTime'
 import { stopKey } from '../map/buildDriverStops'
 import type { DriverRoute } from '../map/useDriverRoute'
-import { formatDateTime, formatMiles, formatTime } from '../../lib/format'
+import { formatDateTime, formatMiles } from '../../lib/format'
+import { useDriversStore } from '../../store/driversStore'
 import { useSelectionStore } from '../../store/selectionStore'
 import { useTripsStore } from '../../store/tripsStore'
-import { TimingBadge, type TimingFlag } from '../trips/StatusBadge'
 import { UnassignButton } from './AssignUnassignControls'
 import { DISPATCH_TABLE_COLUMNS } from './columns'
+import { exportDispatchTableToExcel } from './exportDispatchTable'
 import type { SequencedStop } from '../../types/routing'
 
 interface DispatchTableProps {
@@ -29,7 +31,20 @@ interface DispatchTableProps {
 
 export function DispatchTable({ route }: DispatchTableProps) {
   const trips = useTripsStore((s) => s.trips)
+  const driverName = useDriversStore((s) => s.drivers.find((d) => d.id === route.driverId)?.name) ?? 'Driver'
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
+  const [isExporting, setIsExporting] = useState(false)
+
+  const assignedStopCount = route.stops.filter((s) => !s.isPreview).length
+
+  async function handleExport() {
+    setIsExporting(true)
+    try {
+      await exportDispatchTableToExcel(driverName, route.stops, trips)
+    } finally {
+      setIsExporting(false)
+    }
+  }
 
   if (route.stops.length === 0) {
     return (
@@ -57,34 +72,47 @@ export function DispatchTable({ route }: DispatchTableProps) {
   const items = route.stops.map((s) => stopKey(s.tripId, s.kind))
 
   return (
-    <div className="mt-4 overflow-x-auto rounded-lg border border-gray-200 bg-white">
-      {/* DndContext injects a non-table accessibility element, so it must wrap the whole table
-          rather than live inside it (a <div> is not valid inside <table>/<thead>/<tbody>). */}
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <table className="w-full min-w-[1100px] text-left text-xs">
-          <thead className="border-b border-gray-200 bg-gray-50 text-gray-500">
-            <tr>
-              {DISPATCH_TABLE_COLUMNS.map((col) => (
-                <th key={col.key} className="px-3 py-2 font-medium">
-                  {col.label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <SortableContext items={items} strategy={verticalListSortingStrategy}>
-            <tbody>
-              {route.stops.map((stop) => (
-                <DispatchRow
-                  key={stopKey(stop.tripId, stop.kind)}
-                  stop={stop}
-                  trip={trips.find((t) => t.id === stop.tripId)}
-                  driverId={route.driverId}
-                />
-              ))}
-            </tbody>
-          </SortableContext>
-        </table>
-      </DndContext>
+    <div className="mt-4">
+      <div className="mb-2 flex items-center justify-end">
+        <button
+          type="button"
+          onClick={() => void handleExport()}
+          disabled={isExporting || assignedStopCount === 0}
+          title="Export this driver's assigned stops as an Excel file"
+          className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+        >
+          {isExporting ? 'Exporting…' : 'Export to Excel'}
+        </button>
+      </div>
+      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+        {/* DndContext injects a non-table accessibility element, so it must wrap the whole table
+            rather than live inside it (a <div> is not valid inside <table>/<thead>/<tbody>). */}
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <table className="w-full min-w-[1100px] text-left text-xs">
+            <thead className="border-b border-gray-200 bg-gray-50 text-gray-500">
+              <tr>
+                {DISPATCH_TABLE_COLUMNS.map((col) => (
+                  <th key={col.key} className="px-3 py-2 font-medium">
+                    {col.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <SortableContext items={items} strategy={verticalListSortingStrategy}>
+              <tbody>
+                {route.stops.map((stop) => (
+                  <DispatchRow
+                    key={stopKey(stop.tripId, stop.kind)}
+                    stop={stop}
+                    trip={trips.find((t) => t.id === stop.tripId)}
+                    driverId={route.driverId}
+                  />
+                ))}
+              </tbody>
+            </SortableContext>
+          </table>
+        </DndContext>
+      </div>
     </div>
   )
 }
@@ -161,24 +189,15 @@ function DispatchRow({
         </span>
       </td>
       <td className="px-3 py-2 text-gray-600">{stop.spaceType || '—'}</td>
-      <td className="px-3 py-2 text-gray-600">{formatTime(stop.targetTime)}</td>
-      <td className="px-3 py-2 text-gray-600">{formatTime(stop.arriveTime)}</td>
-      <td className="px-3 py-2">
-        {stop.status === 'Unknown' ? (
-          <span className="text-gray-400">—</span>
-        ) : (
-          <TimingBadge flag={stop.status as TimingFlag} />
-        )}
-      </td>
       <td className="px-3 py-2 text-gray-600">
         {formatMiles(stop.travelMiles)} · {Math.round(stop.travelMinutes)} min
       </td>
-      <td className="px-3 py-2 text-gray-600">{formatMiles(stop.arriveDistanceMiles)}</td>
-      <td className="px-3 py-2 text-gray-600">{stop.loadUnloadMinutes} min</td>
       <td className="px-3 py-2 text-gray-600">{trip?.fundingSource || '—'}</td>
-      <td className="px-3 py-2 text-gray-600">{trip?.phone1 || '—'}</td>
       <td className="max-w-[220px] truncate px-3 py-2 text-gray-600" title={address}>
         {address || '—'}
+      </td>
+      <td className="max-w-[220px] truncate px-3 py-2 text-gray-600" title={trip?.notes}>
+        {trip?.notes || '—'}
       </td>
       <td className="px-3 py-2">
         {stop.isPreview ? (

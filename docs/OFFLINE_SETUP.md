@@ -15,7 +15,10 @@ Address geocoding is **online-only**, via the free US Census Bureau Geocoder
 (unlike Google's Geocoding API, which needs a billing-enabled Cloud project even though usage
 would likely stay within its free credit). It interpolates from TIGER/Line address *ranges* along
 street segments, so it covers real houses well beyond what a point-by-point community-tagged
-dataset like OpenStreetMap would.
+dataset like OpenStreetMap would — but that range data lags on newer developments, so a search that
+returns nothing from Census automatically falls back to OpenStreetMap's Nominatim, which often has
+exactly the newer/smaller places Census is missing. Nominatim fallback calls are throttled to
+roughly one per second in the proxy, per its usage policy.
 
 An earlier version of this project built a fully offline address index from a regional
 OpenStreetMap extract, loaded into a local SQLite database (`better-sqlite3`). That required a
@@ -31,9 +34,9 @@ the app talks to the internet at runtime; nothing else does.
 
 ### Run the geocode proxy
 
-The browser can't call `geocoding.geo.census.gov` directly — that API doesn't send CORS headers —
-so a tiny local Node script (`scripts/geocode/server.mjs`) proxies the request. It needs no local
-data and no build step:
+The browser can't call `geocoding.geo.census.gov` or `nominatim.openstreetmap.org` directly —
+neither sends CORS headers — so a tiny local Node script (`scripts/geocode/server.mjs`) proxies the
+request. It needs no local data and no build step:
 
 ```
 npm run geocode:serve

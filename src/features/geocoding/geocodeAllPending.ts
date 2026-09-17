@@ -15,8 +15,9 @@ interface GeocodeAllActions {
 
 /**
  * Best-effort bulk geocode: for every pickup/dropoff address still 'pending', applies the
- * top-ranked candidate from the free US Census Bureau Geocoder (see geocodeClient.ts). Only the
- * bare address text is ever sent — never a member's name, phone, or any other trip detail.
+ * top-ranked candidate from the free US Census Bureau Geocoder, falling back to OpenStreetMap
+ * Nominatim for addresses Census can't find (see geocodeClient.ts). Only the bare address text is
+ * ever sent — never a member's name, phone, or any other trip detail.
  * Auto-applying the top result (rather than always stopping for a manual pick) is what makes bulk
  * import practical; AddressGeocodeControl still shows a "not right?" affordance on every resolved
  * address so a bad auto-pick is one click to fix.

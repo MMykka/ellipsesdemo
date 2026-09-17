@@ -41,6 +41,7 @@ function buildTripForLeg(
   rowIndex: number,
   importedAt: string,
   referenceDate: Date,
+  batchTag: string,
 ): Trip | undefined {
   const get = (field: string) => valueFor(row, fields, legGroup, field)
 
@@ -61,7 +62,10 @@ function buildTripForLeg(
     return undefined
   }
 
-  const tripId = tripIdRaw ?? `row${rowIndex}-${leg}`
+  // Rows with no trip-ID column fall back to a row-position id, which only stays unique within a
+  // single import — batchTag disambiguates it from the same fallback id in a different file/import
+  // so appending trips from another file can't silently collide with (and overwrite) these.
+  const tripId = tripIdRaw ?? `${batchTag}row${rowIndex}-${leg}`
   // Some exports already bake the leg letter into the trip ID itself — either with a separator
   // ("580570-A") or without one ("X0VG47D190A", a common convention where a round trip is split
   // across two full rows, one per leg, rather than side-by-side columns on one row). That suffix
@@ -112,14 +116,15 @@ export function applyMapping(
   rows: unknown[][],
   profile: ColumnMappingProfile,
   referenceDate: Date = new Date(),
+  batchTag = '',
 ): Trip[] {
   const importedAt = new Date().toISOString()
   const trips: Trip[] = []
 
   rows.forEach((row, rowIndex) => {
-    const legA = buildTripForLeg(row, profile.fields, 'A', 'A', rowIndex, importedAt, referenceDate)
+    const legA = buildTripForLeg(row, profile.fields, 'A', 'A', rowIndex, importedAt, referenceDate, batchTag)
     const legB = profile.hasTwoLegGroups
-      ? buildTripForLeg(row, profile.fields, 'B', 'B', rowIndex, importedAt, referenceDate)
+      ? buildTripForLeg(row, profile.fields, 'B', 'B', rowIndex, importedAt, referenceDate, batchTag)
       : undefined
 
     if (legA && legB) {
