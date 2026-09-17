@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { fnv1aHash } from '../../lib/hash'
 import { geocodeAllPending } from '../geocoding/geocodeAllPending'
+import { useDriversStore } from '../../store/driversStore'
 import { useMappingStore } from '../../store/mappingStore'
 import { useTripsStore } from '../../store/tripsStore'
 import type { ColumnMappingProfile, FieldMappingEntry } from '../../types/columnMapping'
@@ -8,6 +9,7 @@ import type { Trip } from '../../types/trip'
 import { applyMapping } from './applyMapping'
 import { ColumnMapperModal } from './ColumnMapperModal'
 import { MAPPING_LOGIC_VERSION, suggestFieldMapping } from './legGroupDetection'
+import { matchDriverByName } from './matchDriverByName'
 import { parseWorkbook, type ParsedWorkbook } from './parseWorkbook'
 
 interface PendingFile {
@@ -34,6 +36,7 @@ export function ExcelImportButton() {
   const addTrips = useTripsStore((s) => s.addTrips)
   const setAddressGeo = useTripsStore((s) => s.setAddressGeo)
   const setAddressFailed = useTripsStore((s) => s.setAddressFailed)
+  const drivers = useDriversStore((s) => s.drivers)
 
   // Remaining files still to process in the current batch — mutated directly rather than kept in
   // state since nothing needs to re-render off its contents, only off whether `pending` is set.
@@ -97,7 +100,14 @@ export function ExcelImportButton() {
   }
 
   async function importWithProfile(parsed: ParsedWorkbook, profile: ColumnMappingProfile) {
-    const trips = applyMapping(parsed.rows, profile, new Date(), makeBatchTag())
+    const rawTrips = applyMapping(parsed.rows, profile, new Date(), makeBatchTag())
+    // The source export's "Driver Name" column often already carries an assignment — if it names
+    // someone in our driver roster, land the trip on them here too instead of leaving it
+    // unassigned and making the dispatcher redo work the export already did.
+    const trips = rawTrips.map((trip) => ({
+      ...trip,
+      assignedDriverId: matchDriverByName(trip.driverName, drivers),
+    }))
     addTrips(trips)
     saveProfile({ ...profile, lastUsedAt: new Date().toISOString() })
     await autoGeocode(trips)

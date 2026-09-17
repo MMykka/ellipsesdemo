@@ -1,6 +1,11 @@
 import { useDriversStore } from '../../store/driversStore'
 
-export function DriverListPanel() {
+interface DriverListPanelProps {
+  editingDriverId?: string
+  onEdit?: (driverId: string) => void
+}
+
+export function DriverListPanel({ editingDriverId, onEdit }: DriverListPanelProps) {
   const drivers = useDriversStore((s) => s.drivers)
   const removeDriver = useDriversStore((s) => s.removeDriver)
 
@@ -13,7 +18,9 @@ export function DriverListPanel() {
       {drivers.map((driver) => (
         <li
           key={driver.id}
-          className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-3"
+          className={`flex items-center justify-between rounded-lg border p-3 ${
+            driver.id === editingDriverId ? 'border-blue-300 bg-blue-50' : 'border-gray-200 bg-white'
+          }`}
         >
           <div>
             <p className="text-sm font-semibold text-gray-900">{driver.name}</p>
@@ -25,13 +32,22 @@ export function DriverListPanel() {
               )}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => removeDriver(driver.id)}
-            className="text-xs font-medium text-red-600 hover:text-red-800"
-          >
-            Remove
-          </button>
+          <div className="flex shrink-0 items-center gap-3">
+            <button
+              type="button"
+              onClick={() => onEdit?.(driver.id)}
+              className="text-xs font-medium text-blue-600 hover:text-blue-800"
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              onClick={() => removeDriver(driver.id)}
+              className="text-xs font-medium text-red-600 hover:text-red-800"
+            >
+              Remove
+            </button>
+          </div>
         </li>
       ))}
     </ul>

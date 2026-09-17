@@ -3,6 +3,7 @@ import { DispatchTable } from '../dispatchTable/DispatchTable'
 import { DriverListPanel } from '../drivers/DriverListPanel'
 import { DriverPicker } from '../drivers/DriverPicker'
 import { DriverProfileForm } from '../drivers/DriverProfileForm'
+import { useDriversStore } from '../../store/driversStore'
 import { useSelectionStore } from '../../store/selectionStore'
 import { useTripsStore } from '../../store/tripsStore'
 import { MapView } from './MapView'
@@ -15,6 +16,8 @@ export function RoutingPage() {
   const route = useDriverRoute(selectedDriverId)
   const previewTripName = useTripsStore((s) => s.trips.find((t) => t.id === route?.previewTripId)?.memberName)
   const [manageOpen, setManageOpen] = useState(false)
+  const [editingDriverId, setEditingDriverId] = useState<string | undefined>(undefined)
+  const editingDriver = useDriversStore((s) => s.drivers.find((d) => d.id === editingDriverId))
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-6">
@@ -25,7 +28,10 @@ export function RoutingPage() {
         </div>
         <button
           type="button"
-          onClick={() => setManageOpen((v) => !v)}
+          onClick={() => {
+            setManageOpen((v) => !v)
+            setEditingDriverId(undefined)
+          }}
           className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
         >
           {manageOpen ? 'Hide driver setup' : 'Manage drivers'}
@@ -34,10 +40,10 @@ export function RoutingPage() {
 
       {manageOpen && (
         <div className="mb-6 grid grid-cols-1 gap-6 rounded-lg border border-gray-200 bg-gray-50 p-4 lg:grid-cols-2">
-          <DriverProfileForm />
+          <DriverProfileForm editingDriver={editingDriver} onDoneEditing={() => setEditingDriverId(undefined)} />
           <div>
             <h2 className="mb-2 text-sm font-semibold text-gray-900">Drivers</h2>
-            <DriverListPanel />
+            <DriverListPanel editingDriverId={editingDriverId} onEdit={setEditingDriverId} />
           </div>
         </div>
       )}

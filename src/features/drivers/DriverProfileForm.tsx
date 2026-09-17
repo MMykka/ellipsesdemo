@@ -1,18 +1,34 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AddressGeocodeControl } from '../geocoding/AddressGeocodeControl'
 import { useDriversStore } from '../../store/driversStore'
+import type { Driver } from '../../types/driver'
 import type { Address, GeoPoint } from '../../types/trip'
 
 function emptyAddress(raw: string): Address {
   return { raw, geocodeStatus: raw ? 'pending' : 'skipped' }
 }
 
-export function DriverProfileForm() {
+interface DriverProfileFormProps {
+  /** When set, the form edits this driver in place instead of creating a new one. */
+  editingDriver?: Driver
+  /** Called after a successful save, or Cancel, while editing. */
+  onDoneEditing?: () => void
+}
+
+export function DriverProfileForm({ editingDriver, onDoneEditing }: DriverProfileFormProps) {
   const addDriver = useDriversStore((s) => s.addDriver)
+  const updateDriver = useDriversStore((s) => s.updateDriver)
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [garageRaw, setGarageRaw] = useState('')
   const [garageAddress, setGarageAddress] = useState<Address>(emptyAddress(''))
+
+  useEffect(() => {
+    setName(editingDriver?.name ?? '')
+    setPhone(editingDriver?.phone ?? '')
+    setGarageRaw(editingDriver?.garageAddress.raw ?? '')
+    setGarageAddress(editingDriver?.garageAddress ?? emptyAddress(''))
+  }, [editingDriver])
 
   function handleGarageRawChange(value: string) {
     setGarageRaw(value)
@@ -23,9 +39,27 @@ export function DriverProfileForm() {
     setGarageAddress({ raw: label, geo, geocodeStatus: 'resolved' })
   }
 
+  function resetFields() {
+    setName('')
+    setPhone('')
+    setGarageRaw('')
+    setGarageAddress(emptyAddress(''))
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim()) return
+
+    if (editingDriver) {
+      updateDriver(editingDriver.id, {
+        name: name.trim(),
+        phone: phone.trim() || undefined,
+        garageAddress,
+      })
+      onDoneEditing?.()
+      return
+    }
+
     addDriver({
       id: crypto.randomUUID(),
       name: name.trim(),
@@ -33,15 +67,17 @@ export function DriverProfileForm() {
       garageAddress,
       active: true,
     })
-    setName('')
-    setPhone('')
-    setGarageRaw('')
-    setGarageAddress(emptyAddress(''))
+    resetFields()
+  }
+
+  function handleCancel() {
+    resetFields()
+    onDoneEditing?.()
   }
 
   return (
     <form onSubmit={handleSubmit} className="rounded-lg border border-gray-200 bg-white p-4">
-      <h3 className="text-sm font-semibold text-gray-900">Add Driver</h3>
+      <h3 className="text-sm font-semibold text-gray-900">{editingDriver ? 'Edit Driver' : 'Add Driver'}</h3>
       <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="text-xs text-gray-600">
           Name
@@ -74,12 +110,23 @@ export function DriverProfileForm() {
           )}
         </label>
       </div>
-      <button
-        type="submit"
-        className="mt-3 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-      >
-        Add Driver
-      </button>
+      <div className="mt-3 flex gap-2">
+        <button
+          type="submit"
+          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+        >
+          {editingDriver ? 'Save Changes' : 'Add Driver'}
+        </button>
+        {editingDriver && (
+          <button
+            type="button"
+            onClick={handleCancel}
+            className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+        )}
+      </div>
     </form>
   )
 }
