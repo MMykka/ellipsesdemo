@@ -42,6 +42,7 @@ export interface Trip {
   leg: TripLeg
   linkedTripRecordId?: string
   memberName: string
+  tripDateTime?: string
   phone1?: string
   phone2?: string
   pickup: TripPickup

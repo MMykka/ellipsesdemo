@@ -12,9 +12,11 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { tripDisplayDateTime } from '../../domain/time/tripSortTime'
 import { stopKey } from '../map/buildDriverStops'
 import type { DriverRoute } from '../map/useDriverRoute'
-import { formatMiles, formatTime } from '../../lib/format'
+import { formatDateTime, formatMiles, formatTime } from '../../lib/format'
+import { useSelectionStore } from '../../store/selectionStore'
 import { useTripsStore } from '../../store/tripsStore'
 import { TimingBadge, type TimingFlag } from '../trips/StatusBadge'
 import { UnassignButton } from './AssignUnassignControls'
@@ -76,6 +78,7 @@ export function DispatchTable({ route }: DispatchTableProps) {
                   key={stopKey(stop.tripId, stop.kind)}
                   stop={stop}
                   trip={trips.find((t) => t.id === stop.tripId)}
+                  driverId={route.driverId}
                 />
               ))}
             </tbody>
@@ -89,12 +92,19 @@ export function DispatchTable({ route }: DispatchTableProps) {
 function DispatchRow({
   stop,
   trip,
+  driverId,
 }: {
   stop: SequencedStop
   trip: ReturnType<typeof useTripsStore.getState>['trips'][number] | undefined
+  driverId: string
 }) {
   const key = stopKey(stop.tripId, stop.kind)
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: key })
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: key,
+    disabled: stop.isPreview,
+  })
+  const assignDriver = useTripsStore((s) => s.assignDriver)
+  const setPreviewTrip = useSelectionStore((s) => s.setPreviewTrip)
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -105,20 +115,42 @@ function DispatchRow({
   const address = trip ? (stop.kind === 'pickup' ? trip.pickup.address.raw : trip.dropoff.address.raw) : ''
 
   return (
-    <tr ref={setNodeRef} style={style} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
+    <tr
+      ref={setNodeRef}
+      style={style}
+      className={
+        stop.isPreview
+          ? 'border-b border-amber-100 bg-amber-50 last:border-0'
+          : 'border-b border-gray-100 last:border-0 hover:bg-gray-50'
+      }
+    >
       <td className="px-3 py-2 text-gray-400">
-        <button
-          type="button"
-          {...attributes}
-          {...listeners}
-          className="cursor-grab touch-none px-1 active:cursor-grabbing"
-          title="Drag to reorder"
-        >
-          ⠿
-        </button>
+        {stop.isPreview ? (
+          <span title="Assign this trip to enable reordering">⠿</span>
+        ) : (
+          <button
+            type="button"
+            {...attributes}
+            {...listeners}
+            className="cursor-grab touch-none px-1 active:cursor-grabbing"
+            title="Drag to reorder"
+          >
+            ⠿
+          </button>
+        )}
       </td>
       <td className="px-3 py-2 font-semibold text-gray-700">{stop.sequenceNumber}</td>
-      <td className="px-3 py-2 text-gray-900">{stop.memberName}</td>
+      <td className="px-3 py-2 text-gray-900">
+        {stop.memberName}
+        {stop.isPreview && (
+          <span className="ml-2 rounded bg-amber-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-800">
+            Preview
+          </span>
+        )}
+      </td>
+      <td className="px-3 py-2 text-gray-600">
+        {trip ? formatDateTime(tripDisplayDateTime(trip)) : '—'}
+      </td>
       <td className="px-3 py-2">
         <span
           className={
@@ -149,7 +181,21 @@ function DispatchRow({
         {address || '—'}
       </td>
       <td className="px-3 py-2">
-        <UnassignButton tripId={stop.tripId} />
+        {stop.isPreview ? (
+          <button
+            type="button"
+            onClick={() => {
+              assignDriver(stop.tripId, driverId)
+              setPreviewTrip(undefined)
+            }}
+            className="text-xs font-medium text-blue-600 hover:text-blue-800"
+            title="Assign this trip to the driver"
+          >
+            Assign
+          </button>
+        ) : (
+          <UnassignButton tripId={stop.tripId} />
+        )}
       </td>
     </tr>
   )

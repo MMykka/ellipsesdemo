@@ -3,6 +3,7 @@ export type CanonicalField =
   | 'memberName'
   | 'pickupAddress'
   | 'pickupTime'
+  | 'tripDateTime'
   | 'dropoffAddress'
   | 'apptTime'
   | 'phone1'
@@ -26,6 +27,7 @@ export const CANONICAL_FIELDS: { value: CanonicalField; label: string }[] = [
   { value: 'memberName', label: 'Member Name' },
   { value: 'pickupAddress', label: 'Pickup Address' },
   { value: 'pickupTime', label: 'Pickup Time' },
+  { value: 'tripDateTime', label: 'Trip Date/Time' },
   { value: 'dropoffAddress', label: 'Dropoff Address' },
   { value: 'apptTime', label: 'Appointment / Dropoff Time' },
   { value: 'phone1', label: 'Phone 1' },
@@ -61,4 +63,10 @@ export interface ColumnMappingProfile {
   hasTwoLegGroups: boolean
   createdAt: string
   lastUsedAt: string
+  /**
+   * Stamped with MAPPING_LOGIC_VERSION (legGroupDetection.ts) when the profile is saved. A
+   * profile from an older version (or missing this field entirely, for profiles saved before it
+   * existed) is never silently reused — see that constant's comment for why.
+   */
+  mappingVersion: number
 }

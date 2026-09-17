@@ -1,3 +1,4 @@
+import { tripSortTimestamp } from '../../domain/time/tripSortTime'
 import { useTripsStore } from '../../store/tripsStore'
 import { ExcelImportButton } from '../excelImport/ExcelImportButton'
 import { GeocodeAllButton } from '../geocoding/GeocodeAllButton'
@@ -7,6 +8,7 @@ export function TripsPage() {
   const trips = useTripsStore((s) => s.trips)
   const lastImportedAt = useTripsStore((s) => s.lastImportedAt)
   const clear = useTripsStore((s) => s.clear)
+  const sortedTrips = [...trips].sort((a, b) => tripSortTimestamp(a) - tripSortTimestamp(b))
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-6">
@@ -42,7 +44,7 @@ export function TripsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {trips.map((trip) => (
+          {sortedTrips.map((trip) => (
             <TripCard key={trip.id} trip={trip} />
           ))}
         </div>

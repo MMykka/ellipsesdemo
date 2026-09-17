@@ -1,3 +1,4 @@
+import { tripSortTimestamp } from '../../domain/time/tripSortTime'
 import type { Trip } from '../../types/trip'
 import type { Stop } from '../../types/routing'
 
@@ -10,18 +11,19 @@ export function stopKey(tripId: string, kind: StopKind): string {
 interface Candidate {
   trip: Trip
   kind: StopKind
+  isPreview?: boolean
 }
 
 function defaultCandidateOrder(a: Candidate, b: Candidate): number {
-  const timeA = a.trip.pickup.requestedTime ? new Date(a.trip.pickup.requestedTime).getTime() : Infinity
-  const timeB = b.trip.pickup.requestedTime ? new Date(b.trip.pickup.requestedTime).getTime() : Infinity
+  const timeA = tripSortTimestamp(a.trip)
+  const timeB = tripSortTimestamp(b.trip)
   if (timeA !== timeB) return timeA - timeB
   if (a.trip.id !== b.trip.id) return a.trip.id < b.trip.id ? -1 : 1
   return a.kind === 'pickup' ? -1 : 1 // pickup before dropoff within the same trip
 }
 
 function candidateToStop(candidate: Candidate, sequenceNumber: number): Stop {
-  const { trip, kind } = candidate
+  const { trip, kind, isPreview } = candidate
   const leg = kind === 'pickup' ? trip.pickup : trip.dropoff
   return {
     sequenceNumber,
@@ -32,6 +34,7 @@ function candidateToStop(candidate: Candidate, sequenceNumber: number): Stop {
     spaceType: trip.spaceType,
     geo: leg.address.geo!,
     targetTime: kind === 'pickup' ? trip.pickup.requestedTime : trip.dropoff.apptTime,
+    ...(isPreview ? { isPreview: true } : {}),
   }
 }
 
@@ -41,16 +44,41 @@ function candidateToStop(candidate: Candidate, sequenceNumber: number): Stop {
  * dropoff. A dispatcher can override this via drag-to-reorder (stored per-driver as an ordered
  * list of stop keys in sequenceOverrideStore) — any stop not covered by the override (new
  * assignments made after the override was set) is appended at the end in default order.
+ *
+ * `previewTripId` optionally folds one extra, not-actually-assigned trip into the sequence
+ * (flagged with `isPreview`) so a dispatcher can see how it would land on this driver's route
+ * before committing to the assignment. It's ignored once the trip is genuinely assigned here.
  */
-export function buildDriverStops(trips: Trip[], driverId: string, manualOrder?: string[]): Stop[] {
+export function buildDriverStops(
+  trips: Trip[],
+  driverId: string,
+  manualOrder?: string[],
+  previewTripId?: string,
+): Stop[] {
   const assigned = trips
     .filter((t) => t.assignedDriverId === driverId)
     .filter((t) => t.pickup.address.geo && t.dropoff.address.geo)
 
-  const candidates: Candidate[] = assigned.flatMap((trip) => [
-    { trip, kind: 'pickup' as const },
-    { trip, kind: 'dropoff' as const },
-  ])
+  const previewTrip = trips.find(
+    (t) =>
+      t.id === previewTripId &&
+      t.assignedDriverId !== driverId &&
+      t.pickup.address.geo &&
+      t.dropoff.address.geo,
+  )
+
+  const candidates: Candidate[] = [
+    ...assigned.flatMap((trip) => [
+      { trip, kind: 'pickup' as const },
+      { trip, kind: 'dropoff' as const },
+    ]),
+    ...(previewTrip
+      ? [
+          { trip: previewTrip, kind: 'pickup' as const, isPreview: true },
+          { trip: previewTrip, kind: 'dropoff' as const, isPreview: true },
+        ]
+      : []),
+  ]
 
   let ordered: Candidate[]
   if (manualOrder && manualOrder.length > 0) {

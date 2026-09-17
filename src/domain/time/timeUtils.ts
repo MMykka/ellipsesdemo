@@ -30,6 +30,18 @@ export function normalizeExcelDateTime(
       return d.toISOString()
     }
 
+    // "MM/DD/YYYY HHmm" — a date paired with military time with no colon (seen in some
+    // dispatch exports, e.g. "08/27/2026 1209"). JS's Date constructor doesn't parse this.
+    const dateAndMilitary = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{3,4})$/)
+    if (dateAndMilitary) {
+      const [, month, day, year, time] = dateAndMilitary
+      const militaryTime = parseHhMm(time)
+      if (militaryTime) {
+        const d = new Date(Number(year), Number(month) - 1, Number(day), militaryTime.hours, militaryTime.minutes)
+        if (!Number.isNaN(d.getTime())) return d.toISOString()
+      }
+    }
+
     const parsed = new Date(trimmed)
     if (!Number.isNaN(parsed.getTime())) {
       return combineWithReferenceDateIfTimeOnly(parsed, referenceDate)

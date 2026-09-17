@@ -18,10 +18,14 @@ function baseCircle(bg: string, border: string): HTMLDivElement {
   return el
 }
 
-export function createStopMarkerElement(sequenceNumber: number, kind: StopKind): HTMLElement {
-  const el = baseCircle(kind === 'pickup' ? '#16a34a' : '#dc2626', '#ffffff')
+export function createStopMarkerElement(sequenceNumber: number, kind: StopKind, isPreview = false): HTMLElement {
+  const el = baseCircle(kind === 'pickup' ? '#16a34a' : '#dc2626', isPreview ? '#f59e0b' : '#ffffff')
   el.textContent = String(sequenceNumber)
-  el.title = `${kind === 'pickup' ? 'Pickup' : 'Dropoff'} #${sequenceNumber}`
+  el.title = `${isPreview ? 'Preview — ' : ''}${kind === 'pickup' ? 'Pickup' : 'Dropoff'} #${sequenceNumber}`
+  if (isPreview) {
+    el.style.opacity = '0.75'
+    el.style.borderStyle = 'dashed'
+  }
   return el
 }
 
@@ -38,6 +42,7 @@ interface StopPopupData {
   memberName: string
   arriveTimeLabel: string
   status: string
+  isPreview?: boolean
 }
 
 export function createStopPopupContent(stop: StopPopupData): HTMLElement {
@@ -54,6 +59,15 @@ export function createStopPopupContent(stop: StopPopupData): HTMLElement {
   detail.style.color = '#6b7280'
   detail.textContent = `ETA ${stop.arriveTimeLabel} · ${stop.status}`
   container.appendChild(detail)
+
+  if (stop.isPreview) {
+    const badge = document.createElement('div')
+    badge.style.color = '#b45309'
+    badge.style.fontWeight = '600'
+    badge.style.marginTop = '2px'
+    badge.textContent = 'Preview — not assigned'
+    container.appendChild(badge)
+  }
 
   return container
 }

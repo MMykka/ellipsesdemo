@@ -66,7 +66,7 @@ export function MapView({ route }: MapViewProps) {
 
     for (const stop of route.stops) {
       const marker = new Marker({
-        element: createStopMarkerElement(stop.sequenceNumber, stop.kind),
+        element: createStopMarkerElement(stop.sequenceNumber, stop.kind, stop.isPreview),
       })
         .setLngLat([stop.geo.lng, stop.geo.lat])
         .setPopup(
@@ -77,6 +77,7 @@ export function MapView({ route }: MapViewProps) {
               memberName: stop.memberName,
               arriveTimeLabel: formatTime(stop.arriveTime),
               status: stop.status,
+              isPreview: stop.isPreview,
             }),
           ),
         )

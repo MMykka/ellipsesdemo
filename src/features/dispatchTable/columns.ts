@@ -2,6 +2,7 @@ export const DISPATCH_TABLE_COLUMNS = [
   { key: 'drag', label: '' },
   { key: 'seq', label: '#' },
   { key: 'name', label: 'Name' },
+  { key: 'tripDateTime', label: 'Trip Date/Time' },
   { key: 'kind', label: 'Stop' },
   { key: 'spaceType', label: 'Space Type' },
   { key: 'targetTime', label: 'Target Time' },

@@ -1,5 +1,6 @@
 import { classifyTiming } from '../../domain/feasibility/classifyTiming'
-import { formatMiles, formatTime } from '../../lib/format'
+import { tripDisplayDateTime } from '../../domain/time/tripSortTime'
+import { formatDateTime, formatMiles, formatTime } from '../../lib/format'
 import { AddressGeocodeControl } from '../geocoding/AddressGeocodeControl'
 import { useDriversStore } from '../../store/driversStore'
 import { useTripsStore } from '../../store/tripsStore'
@@ -20,7 +21,10 @@ export function TripCard({ trip }: { trip: Trip }) {
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h3 className="text-sm font-bold text-blue-800">{trip.memberName}</h3>
-          <p className="text-xs text-gray-500">{trip.id}</p>
+          <p className="text-xs text-gray-500">
+            {trip.id}
+            {tripDisplayDateTime(trip) && <> · {formatDateTime(tripDisplayDateTime(trip))}</>}
+          </p>
         </div>
         <div className="flex flex-wrap gap-1.5">
           <TripStatusBadge status={trip.status} />

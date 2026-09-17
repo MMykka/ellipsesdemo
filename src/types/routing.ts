@@ -10,6 +10,8 @@ export interface Stop {
   spaceType: string
   geo: GeoPoint
   targetTime?: string
+  /** True when this stop is a hypothetical "what if I assigned this trip" preview, not a real assignment. */
+  isPreview?: boolean
 }
 
 export interface SequencedStop extends Stop {

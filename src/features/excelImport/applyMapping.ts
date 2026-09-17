@@ -54,17 +54,29 @@ function buildTripForLeg(
     return undefined
   }
 
+  const statusRaw = cellText(get('status'))
+  // Cancelled trips are dropped on import rather than shown — they're not something a dispatcher
+  // needs to route or see cluttering the trip list.
+  if (statusRaw?.trim().toLowerCase() === 'cancelled') {
+    return undefined
+  }
+
   const tripId = tripIdRaw ?? `row${rowIndex}-${leg}`
-  // Some exports already bake the leg letter into the trip ID itself (e.g. "580570-A"); only
-  // append it ourselves when it isn't already there, to avoid ids like "580570-A-A".
-  const alreadyHasLegSuffix = new RegExp(`[-_]${leg}$`, 'i').test(tripId)
-  const id = alreadyHasLegSuffix ? tripId : `${tripId}-${leg}`
+  // Some exports already bake the leg letter into the trip ID itself — either with a separator
+  // ("580570-A") or without one ("X0VG47D190A", a common convention where a round trip is split
+  // across two full rows, one per leg, rather than side-by-side columns on one row). That suffix
+  // is the authoritative signal for which leg a row is — it takes priority over the column-group
+  // leg — and we only append our own "-${leg}" when the id doesn't already end in one.
+  const idLegMatch = tripId.match(/([AB])$/i)
+  const actualLeg: TripLeg = idLegMatch ? (idLegMatch[1].toUpperCase() as TripLeg) : leg
+  const id = idLegMatch ? tripId : `${tripId}-${leg}`
 
   return {
     id,
     tripId,
-    leg,
+    leg: actualLeg,
     memberName: memberName ?? 'Unknown Member',
+    tripDateTime: normalizeExcelDateTime(get('tripDateTime'), referenceDate),
     phone1: cellText(get('phone1')),
     phone2: cellText(get('phone2')),
     pickup: {
@@ -84,7 +96,7 @@ function buildTripForLeg(
     driverName: cellText(get('driverName')),
     fundingSource: cellText(get('fundingSource')),
     notes: cellText(get('notes')),
-    status: (cellText(get('status')) as Trip['status']) ?? 'Scheduled',
+    status: (statusRaw as Trip['status']) ?? 'Scheduled',
     cancelledAt: normalizeExcelDateTime(get('cancelledAt'), referenceDate),
     cancelledReason: cellText(get('cancelledReason')),
     sourceRowIndex: rowIndex,
@@ -119,5 +131,34 @@ export function applyMapping(
     if (legB) trips.push(legB)
   })
 
+  linkRoundTripLegsAcrossRows(trips)
+
   return trips
+}
+
+/**
+ * Some exports carry each leg of a round trip as its own full row — pickup-leg and return-leg
+ * side by side in one row is only one convention; the other puts them on two separate rows,
+ * distinguished solely by a trailing "A"/"B" on the trip ID (e.g. "X0VG47D190A" and
+ * "X0VG47D190B"). buildTripForLeg already reads that suffix into each trip's `leg`; this links
+ * such pairs via linkedTripRecordId so dispatchers can see they're the same round trip, the same
+ * way same-row leg pairs already are.
+ */
+function linkRoundTripLegsAcrossRows(trips: Trip[]): void {
+  const byBaseId = new Map<string, Trip[]>()
+  for (const trip of trips) {
+    const baseId = trip.tripId.replace(/[-_]?[AB]$/i, '')
+    const group = byBaseId.get(baseId)
+    if (group) group.push(trip)
+    else byBaseId.set(baseId, [trip])
+  }
+
+  for (const group of byBaseId.values()) {
+    if (group.length !== 2) continue
+    const [first, second] = group
+    if (first.linkedTripRecordId || second.linkedTripRecordId) continue
+    if (first.leg === second.leg) continue
+    first.linkedTripRecordId = second.id
+    second.linkedTripRecordId = first.id
+  }
 }
