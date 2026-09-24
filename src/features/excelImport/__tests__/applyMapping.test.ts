@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { suggestFieldMapping } from '../legGroupDetection'
+import { suggestFieldMapping, MAPPING_LOGIC_VERSION } from '../legGroupDetection'
 import { applyMapping } from '../applyMapping'
 import type { ColumnMappingProfile } from '../../../types/columnMapping'
 
@@ -42,6 +42,7 @@ describe('suggestFieldMapping + applyMapping', () => {
       hasTwoLegGroups,
       createdAt: new Date().toISOString(),
       lastUsedAt: new Date().toISOString(),
+      mappingVersion: MAPPING_LOGIC_VERSION,
     }
 
     const row = [
@@ -90,6 +91,7 @@ describe('suggestFieldMapping + applyMapping', () => {
       hasTwoLegGroups,
       createdAt: new Date().toISOString(),
       lastUsedAt: new Date().toISOString(),
+      mappingVersion: MAPPING_LOGIC_VERSION,
     }
 
     const row = ['123', 'Jane Doe', '1 Main St', '06:20', '2 Second St']

@@ -31,7 +31,10 @@ export function TripAssignPanel() {
 
   const selectedDriverName = drivers.find((d) => d.id === selectedDriverId)?.name
   const query = search.trim().toLowerCase()
-  const sortedTrips = [...trips]
+  // Once a trip is assigned to a driver it belongs on that driver's route, not in this
+  // pick-list — it reappears here automatically (this list is store-driven) if unassigned.
+  const unassignedTrips = trips.filter((trip) => !trip.assignedDriverId)
+  const sortedTrips = unassignedTrips
     .filter((trip) => !query || trip.memberName.toLowerCase().includes(query))
     .sort((a, b) => tripSortTimestamp(a) - tripSortTimestamp(b))
 
@@ -56,14 +59,14 @@ export function TripAssignPanel() {
         {trips.length === 0 && (
           <p className="px-3 py-4 text-center text-xs text-gray-400">No trips imported yet.</p>
         )}
-        {trips.length > 0 && sortedTrips.length === 0 && (
+        {trips.length > 0 && unassignedTrips.length === 0 && (
+          <p className="px-3 py-4 text-center text-xs text-gray-400">All imported trips are assigned.</p>
+        )}
+        {unassignedTrips.length > 0 && sortedTrips.length === 0 && (
           <p className="px-3 py-4 text-center text-xs text-gray-400">No trips match "{search}".</p>
         )}
         {sortedTrips.map((trip) => {
-          const assignedDriverName = drivers.find((d) => d.id === trip.assignedDriverId)?.name
-          const assignedToSelected = Boolean(selectedDriverId) && trip.assignedDriverId === selectedDriverId
           const isPreviewed = previewTripId === trip.id
-          const previewDisabled = !selectedDriverId || assignedToSelected
 
           return (
             <div
@@ -72,24 +75,19 @@ export function TripAssignPanel() {
             >
               <div className="min-w-0">
                 <p className="truncate text-xs font-medium text-gray-800">{trip.memberName}</p>
-                <p className="truncate text-xs text-gray-500">
-                  {formatDateTime(tripDisplayDateTime(trip))}
-                  {assignedDriverName && <> · {assignedDriverName}</>}
-                </p>
+                <p className="truncate text-xs text-gray-500">{formatDateTime(tripDisplayDateTime(trip))}</p>
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 <button
                   type="button"
-                  disabled={previewDisabled}
+                  disabled={!selectedDriverId}
                   onClick={() => setPreviewTrip(isPreviewed ? undefined : trip.id)}
                   title={
                     !selectedDriverId
                       ? 'Select a driver first'
-                      : assignedToSelected
-                        ? 'Already assigned to this driver'
-                        : isPreviewed
-                          ? 'Stop previewing'
-                          : `Preview on ${selectedDriverName ?? 'this driver'} without assigning`
+                      : isPreviewed
+                        ? 'Stop previewing'
+                        : `Preview on ${selectedDriverName ?? 'this driver'} without assigning`
                   }
                   aria-pressed={isPreviewed}
                   className={`flex h-6 w-6 items-center justify-center rounded-full border text-sm leading-none disabled:opacity-30 disabled:hover:bg-transparent ${
@@ -102,19 +100,13 @@ export function TripAssignPanel() {
                 </button>
                 <button
                   type="button"
-                  disabled={!selectedDriverId || assignedToSelected}
+                  disabled={!selectedDriverId}
                   onClick={() => {
                     if (!selectedDriverId) return
                     assignDriver(trip.id, selectedDriverId)
                     if (isPreviewed) setPreviewTrip(undefined)
                   }}
-                  title={
-                    !selectedDriverId
-                      ? 'Select a driver first'
-                      : assignedToSelected
-                        ? 'Already assigned to this driver'
-                        : `Assign to ${selectedDriverName ?? 'this driver'}`
-                  }
+                  title={!selectedDriverId ? 'Select a driver first' : `Assign to ${selectedDriverName ?? 'this driver'}`}
                   className="flex h-6 w-6 items-center justify-center rounded-full border border-gray-300 text-sm font-bold leading-none text-gray-600 hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent"
                 >
                   +

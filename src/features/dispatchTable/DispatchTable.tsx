@@ -219,7 +219,7 @@ function DispatchRow({
         <button
           type="button"
           onClick={toggleHighlight}
-          title="Highlight this stop's estimated travel leg on the map"
+          title="Select this stop — select two or more to draw the route connecting them, in order, on the map"
           className={`text-left hover:underline ${isHighlighted ? 'font-semibold text-blue-700' : ''}`}
         >
           {stop.memberName}

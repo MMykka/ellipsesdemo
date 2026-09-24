@@ -137,12 +137,15 @@ export function MapView({ route, enlargedStopKeys, highlightedStopKeys }: MapVie
     }
   }, [route, enlargedStopKeys])
 
-  // Draws every highlighted stop's travel leg in blue, any number at once: each leg's straight-line
-  // estimate immediately (for instant feedback), then upgraded in place to its actual road path as
-  // OSRM's free public routing demo (router.project-osrm.org — no API key, coordinates only, see
-  // routingClient.ts) resolves it — independently per leg, so one leg's lookup finishing doesn't
-  // wait on another's. Falls back to the straight line if a lookup fails; nothing else in the app
-  // (ETAs, feasibility status, export) depends on this — it's a map visual aid only.
+  // Draws the path connecting the selected stops, in blue: selecting two or more stops (any number,
+  // any position — the garage is never a selectable endpoint) connects them pairwise in route order,
+  // so selecting stops 1 and 3 (skipping 2) draws one direct leg from 1 to 3, while selecting 1, 2,
+  // and 3 draws two legs (1-2 and 2-3). Each leg renders as a straight-line estimate immediately
+  // (for instant feedback), then upgrades in place to its actual road path as OSRM's free public
+  // routing demo (router.project-osrm.org — no API key, coordinates only, see routingClient.ts)
+  // resolves it — independently per leg, so one leg's lookup finishing doesn't wait on another's.
+  // Falls back to the straight line if a lookup fails; nothing else in the app (ETAs, feasibility
+  // status, export) depends on this — it's a map visual aid only.
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
@@ -168,12 +171,9 @@ export function MapView({ route, enlargedStopKeys, highlightedStopKeys }: MapVie
     }
 
     const render = () => {
-      const keys = highlightedStopKeys ?? new Set<string>()
       const straightFeatures: LegLineFeature[] = []
       const roadFeatures: LegLineFeature[] = []
-      for (const key of keys) {
-        const state = legStateRef.current.get(key)
-        if (!state) continue
+      for (const state of legStateRef.current.values()) {
         const feature: LegLineFeature = {
           type: 'Feature',
           properties: {},
@@ -185,31 +185,46 @@ export function MapView({ route, enlargedStopKeys, highlightedStopKeys }: MapVie
       setLayer(HIGHLIGHT_ROAD_SOURCE_ID, HIGHLIGHT_ROAD_LAYER_ID, roadFeatures, false)
     }
 
-    const legEndpoints = (key: string) => {
-      if (!route) return undefined
-      const index = route.stops.findIndex((s) => stopKey(s.tripId, s.kind) === key)
-      if (index === -1) return undefined
-      const fromGeo = index === 0 ? route.garageGeo : route.stops[index - 1].geo
-      if (!fromGeo) return undefined
-      return { fromGeo, toGeo: route.stops[index].geo }
+    // Pairs up the selected stops in route order (not click order), regardless of whether they're
+    // physically adjacent — selecting non-adjacent stops draws a direct leg between just those two.
+    // Keyed by both endpoints so a leg is correctly dropped/reseeded if which stop feeds into it
+    // changes (e.g. deselecting stop 2 turns leg "2->3" into leg "1->3").
+    const selectedLegs = () => {
+      if (!route) return []
+      const keys = highlightedStopKeys ?? new Set<string>()
+      const selectedIndexes = route.stops
+        .map((s, index) => ({ index, key: stopKey(s.tripId, s.kind) }))
+        .filter(({ key }) => keys.has(key))
+        .map(({ index }) => index)
+
+      const legs: { legKey: string; fromGeo: (typeof route.stops)[number]['geo']; toGeo: (typeof route.stops)[number]['geo'] }[] = []
+      for (let i = 1; i < selectedIndexes.length; i++) {
+        const from = route.stops[selectedIndexes[i - 1]]
+        const to = route.stops[selectedIndexes[i]]
+        legs.push({
+          legKey: `${stopKey(from.tripId, from.kind)}->${stopKey(to.tripId, to.kind)}`,
+          fromGeo: from.geo,
+          toGeo: to.geo,
+        })
+      }
+      return legs
     }
 
     const run = async () => {
-      const keys = [...(highlightedStopKeys ?? [])]
+      const legs = selectedLegs()
+      const activeLegKeys = new Set(legs.map((l) => l.legKey))
 
-      // Drop state for legs no longer selected.
-      for (const key of [...legStateRef.current.keys()]) {
-        if (!keys.includes(key)) legStateRef.current.delete(key)
+      // Drop state for legs no longer part of the current selection.
+      for (const legKey of [...legStateRef.current.keys()]) {
+        if (!activeLegKeys.has(legKey)) legStateRef.current.delete(legKey)
       }
       // Seed newly-selected legs with their straight-line estimate right away.
-      for (const key of keys) {
-        if (legStateRef.current.has(key)) continue
-        const endpoints = legEndpoints(key)
-        if (!endpoints) continue
-        legStateRef.current.set(key, {
+      for (const leg of legs) {
+        if (legStateRef.current.has(leg.legKey)) continue
+        legStateRef.current.set(leg.legKey, {
           coordinates: [
-            [endpoints.fromGeo.lng, endpoints.fromGeo.lat],
-            [endpoints.toGeo.lng, endpoints.toGeo.lat],
+            [leg.fromGeo.lng, leg.fromGeo.lat],
+            [leg.toGeo.lng, leg.toGeo.lat],
           ],
           isRoadRoute: false,
         })
@@ -218,14 +233,12 @@ export function MapView({ route, enlargedStopKeys, highlightedStopKeys }: MapVie
 
       // Upgrade each not-yet-resolved leg to its real road route independently.
       await Promise.all(
-        keys.map(async (key) => {
-          const state = legStateRef.current.get(key)
+        legs.map(async (leg) => {
+          const state = legStateRef.current.get(leg.legKey)
           if (!state || state.isRoadRoute) return
-          const endpoints = legEndpoints(key)
-          if (!endpoints) return
-          const roadCoordinates = await fetchRoadRouteCached(endpoints.fromGeo, endpoints.toGeo)
+          const roadCoordinates = await fetchRoadRouteCached(leg.fromGeo, leg.toGeo)
           if (cancelled || !roadCoordinates) return
-          legStateRef.current.set(key, { coordinates: roadCoordinates, isRoadRoute: true })
+          legStateRef.current.set(leg.legKey, { coordinates: roadCoordinates, isRoadRoute: true })
           render()
         }),
       )
