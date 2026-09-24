@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState, type Dispatch, type SetStateAction } from 'react'
 import { DispatchTable } from '../dispatchTable/DispatchTable'
 import { DriverListPanel } from '../drivers/DriverListPanel'
 import { DriverPicker } from '../drivers/DriverPicker'
@@ -18,6 +18,22 @@ export function RoutingPage() {
   const [manageOpen, setManageOpen] = useState(false)
   const [editingDriverId, setEditingDriverId] = useState<string | undefined>(undefined)
   const editingDriver = useDriversStore((s) => s.drivers.find((d) => d.id === editingDriverId))
+  const [enlargedStopKeys, setEnlargedStopKeys] = useState<Set<string>>(new Set())
+  const [highlightedStopKeys, setHighlightedStopKeys] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    setEnlargedStopKeys(new Set())
+    setHighlightedStopKeys(new Set())
+  }, [selectedDriverId])
+
+  function toggleInSet(setter: Dispatch<SetStateAction<Set<string>>>, key: string) {
+    setter((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-6">
@@ -72,7 +88,7 @@ export function RoutingPage() {
                   </button>
                 </div>
               )}
-              <MapView route={route} />
+              <MapView route={route} enlargedStopKeys={enlargedStopKeys} highlightedStopKeys={highlightedStopKeys} />
             </>
           )}
         </div>
@@ -83,7 +99,13 @@ export function RoutingPage() {
           without needing a horizontal scroll. */}
       {selectedDriverId && route && (
         <>
-          <DispatchTable route={route} />
+          <DispatchTable
+            route={route}
+            enlargedStopKeys={enlargedStopKeys}
+            onToggleEnlarge={(key) => toggleInSet(setEnlargedStopKeys, key)}
+            highlightedStopKeys={highlightedStopKeys}
+            onToggleHighlight={(key) => toggleInSet(setHighlightedStopKeys, key)}
+          />
           <p className="mt-2 text-xs text-gray-400">
             Distance/time are estimates (straight-line distance, not real road routing — see
             docs/OFFLINE_SETUP.md). Drag rows to reorder the route; times recompute automatically.

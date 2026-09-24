@@ -1,14 +1,18 @@
 export type StopKind = 'pickup' | 'dropoff'
 
-function baseCircle(bg: string, border: string): HTMLDivElement {
+const STOP_CIRCLE_SIZE_PX = 18
+const STOP_CIRCLE_ENLARGED_SCALE = 1.8
+const STOP_PIN_CIRCLE_CLASS = 'stop-pin-circle'
+
+function baseCircle(bg: string, border: string, sizePx: number, fontSizePx: number): HTMLDivElement {
   const el = document.createElement('div')
-  el.style.width = '26px'
-  el.style.height = '26px'
+  el.style.width = `${sizePx}px`
+  el.style.height = `${sizePx}px`
   el.style.borderRadius = '50%'
   el.style.display = 'flex'
   el.style.alignItems = 'center'
   el.style.justifyContent = 'center'
-  el.style.fontSize = '12px'
+  el.style.fontSize = `${fontSizePx}px`
   el.style.fontWeight = '700'
   el.style.color = '#fff'
   el.style.background = bg
@@ -18,19 +22,51 @@ function baseCircle(bg: string, border: string): HTMLDivElement {
   return el
 }
 
-export function createStopMarkerElement(sequenceNumber: number, kind: StopKind, isPreview = false): HTMLElement {
-  const el = baseCircle(kind === 'pickup' ? '#16a34a' : '#dc2626', isPreview ? '#f59e0b' : '#ffffff')
-  el.textContent = String(sequenceNumber)
-  el.title = `${isPreview ? 'Preview — ' : ''}${kind === 'pickup' ? 'Pickup' : 'Dropoff'} #${sequenceNumber}`
+/**
+ * Returns a wrapper element (what MapLibre's Marker positions) containing an inner circle sized
+ * by CSS transform. Scaling the inner element rather than the wrapper keeps our resize logic from
+ * fighting MapLibre's own `transform: translate(...)` positioning, which it applies directly to
+ * the element passed to `new Marker({ element })`.
+ */
+export function createStopMarkerElement(
+  sequenceNumber: number,
+  kind: StopKind,
+  isPreview = false,
+  overlapCount = 1,
+): HTMLElement {
+  const wrapper = document.createElement('div')
+  const circle = baseCircle(
+    kind === 'pickup' ? '#16a34a' : '#dc2626',
+    isPreview ? '#f59e0b' : '#ffffff',
+    STOP_CIRCLE_SIZE_PX,
+    9,
+  )
+  circle.className = STOP_PIN_CIRCLE_CLASS
+  circle.style.transition = 'transform 150ms ease, box-shadow 150ms ease'
+  circle.style.transformOrigin = 'center center'
+  circle.textContent = String(sequenceNumber)
+  const overlapHint = overlapCount > 1 ? ` · ${overlapCount} stops share this address` : ''
+  wrapper.title = `${isPreview ? 'Preview — ' : ''}${kind === 'pickup' ? 'Pickup' : 'Dropoff'} #${sequenceNumber}${overlapHint}`
   if (isPreview) {
-    el.style.opacity = '0.75'
-    el.style.borderStyle = 'dashed'
+    circle.style.opacity = '0.75'
+    circle.style.borderStyle = 'dashed'
   }
-  return el
+  wrapper.appendChild(circle)
+  return wrapper
+}
+
+/** Grows (or shrinks back) a stop marker's inner circle in place — used to make a pin easy to spot
+ * on click when several stops share (or nearly share) a coordinate and stack on top of each other. */
+export function setStopMarkerEnlarged(markerElement: HTMLElement, enlarged: boolean) {
+  const circle = markerElement.querySelector<HTMLElement>(`.${STOP_PIN_CIRCLE_CLASS}`)
+  if (!circle) return
+  circle.style.transform = enlarged ? `scale(${STOP_CIRCLE_ENLARGED_SCALE})` : 'scale(1)'
+  circle.style.zIndex = enlarged ? '30' : ''
+  circle.style.boxShadow = enlarged ? '0 2px 8px rgba(0,0,0,0.55)' : '0 1px 3px rgba(0,0,0,0.4)'
 }
 
 export function createGarageMarkerElement(): HTMLElement {
-  const el = baseCircle('#111827', '#ffffff')
+  const el = baseCircle('#111827', '#ffffff', 22, 11)
   el.textContent = 'G'
   el.title = 'Garage'
   return el

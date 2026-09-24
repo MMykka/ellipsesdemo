@@ -27,9 +27,23 @@ import type { SequencedStop } from '../../types/routing'
 
 interface DispatchTableProps {
   route: DriverRoute
+  /** Stop keys (see buildDriverStops#stopKey) whose pins are enlarged on the map — any number at
+   * once, see MapView. */
+  enlargedStopKeys?: Set<string>
+  onToggleEnlarge?: (stopKey: string) => void
+  /** Stop keys whose estimated travel legs are highlighted blue on the map — any number at once,
+   * see MapView. */
+  highlightedStopKeys?: Set<string>
+  onToggleHighlight?: (stopKey: string) => void
 }
 
-export function DispatchTable({ route }: DispatchTableProps) {
+export function DispatchTable({
+  route,
+  enlargedStopKeys,
+  onToggleEnlarge,
+  highlightedStopKeys,
+  onToggleHighlight,
+}: DispatchTableProps) {
   const trips = useTripsStore((s) => s.trips)
   const driverName = useDriversStore((s) => s.drivers.find((d) => d.id === route.driverId)?.name) ?? 'Driver'
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
@@ -106,6 +120,10 @@ export function DispatchTable({ route }: DispatchTableProps) {
                     stop={stop}
                     trip={trips.find((t) => t.id === stop.tripId)}
                     driverId={route.driverId}
+                    isEnlarged={enlargedStopKeys?.has(stopKey(stop.tripId, stop.kind)) ?? false}
+                    onToggleEnlarge={onToggleEnlarge}
+                    isHighlighted={highlightedStopKeys?.has(stopKey(stop.tripId, stop.kind)) ?? false}
+                    onToggleHighlight={onToggleHighlight}
                   />
                 ))}
               </tbody>
@@ -121,10 +139,18 @@ function DispatchRow({
   stop,
   trip,
   driverId,
+  isEnlarged,
+  onToggleEnlarge,
+  isHighlighted,
+  onToggleHighlight,
 }: {
   stop: SequencedStop
   trip: ReturnType<typeof useTripsStore.getState>['trips'][number] | undefined
   driverId: string
+  isEnlarged: boolean
+  onToggleEnlarge?: (stopKey: string) => void
+  isHighlighted: boolean
+  onToggleHighlight?: (stopKey: string) => void
 }) {
   const key = stopKey(stop.tripId, stop.kind)
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -142,6 +168,14 @@ function DispatchRow({
 
   const address = trip ? (stop.kind === 'pickup' ? trip.pickup.address.raw : trip.dropoff.address.raw) : ''
 
+  function toggleEnlarge() {
+    onToggleEnlarge?.(key)
+  }
+
+  function toggleHighlight() {
+    onToggleHighlight?.(key)
+  }
+
   return (
     <tr
       ref={setNodeRef}
@@ -149,7 +183,9 @@ function DispatchRow({
       className={
         stop.isPreview
           ? 'border-b border-amber-100 bg-amber-50 last:border-0'
-          : 'border-b border-gray-100 last:border-0 hover:bg-gray-50'
+          : `border-b border-gray-100 last:border-0 hover:bg-gray-50 ${
+              isEnlarged || isHighlighted ? 'bg-blue-50' : ''
+            }`
       }
     >
       <td className="px-3 py-2 text-gray-400">
@@ -167,9 +203,27 @@ function DispatchRow({
           </button>
         )}
       </td>
-      <td className="px-3 py-2 font-semibold text-gray-700">{stop.sequenceNumber}</td>
+      <td className="px-3 py-2">
+        <button
+          type="button"
+          onClick={toggleEnlarge}
+          title="Grow this stop's pin on the map — useful when stops overlap"
+          className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold transition-colors ${
+            isEnlarged ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          {stop.sequenceNumber}
+        </button>
+      </td>
       <td className="px-3 py-2 text-gray-900">
-        {stop.memberName}
+        <button
+          type="button"
+          onClick={toggleHighlight}
+          title="Highlight this stop's estimated travel leg on the map"
+          className={`text-left hover:underline ${isHighlighted ? 'font-semibold text-blue-700' : ''}`}
+        >
+          {stop.memberName}
+        </button>
         {stop.isPreview && (
           <span className="ml-2 rounded bg-amber-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-800">
             Preview
